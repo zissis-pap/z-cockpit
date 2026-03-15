@@ -43,7 +43,7 @@ export default function ProjectsTab() {
       if (res.ok) {
         setRepos(prev => prev.map(r =>
           repoKey(r) === key
-            ? { ...r, status: res.status as RepoStatus, local_path: res.local_path ?? r.local_path, behind: res.behind }
+            ? { ...r, status: res.status as RepoStatus, local_path: res.local_path ?? r.local_path, ahead: res.ahead, behind: res.behind }
             : r
         ))
       }

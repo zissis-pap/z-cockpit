@@ -64,7 +64,7 @@ export const settings = {
 
 export const projects = {
   repos:   () => req<{ ok: boolean; error?: string; errors?: string[]; repos: GitRepo[] }>('GET', '/projects/repos'),
-  status:  (accountId: string, name: string) => req<{ ok: boolean; status: RepoStatus; local_path?: string; behind?: number }>('GET', `/projects/repos/${accountId}/${name}/status`),
+  status:  (accountId: string, name: string) => req<{ ok: boolean; status: RepoStatus; local_path?: string; ahead?: number; behind?: number }>('GET', `/projects/repos/${accountId}/${name}/status`),
   changes: (accountId: string, name: string) => req<{ ok: boolean; files: Array<{ code: string; file: string }> }>('GET', `/projects/repos/${accountId}/${name}/changes`),
   clone:   (accountId: string, name: string, clone_url: string) => req<{ ok: boolean }>('POST', `/projects/repos/${accountId}/${name}/clone?clone_url=${encodeURIComponent(clone_url)}`),
   pull:    (accountId: string, name: string) => req<{ ok: boolean }>('POST', `/projects/repos/${accountId}/${name}/pull`),
