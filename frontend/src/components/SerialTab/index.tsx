@@ -104,6 +104,28 @@ function AnsiLine({ text }: { text: string }) {
   )
 }
 
+// ── Hex byte renderer (like binary viewer) ────────────────────────────────────
+
+function hexByteClass(b: number): string {
+  if (b === 0x00) return 'text-zinc-700'
+  if (b >= 0x20 && b < 0x7f) return 'text-zinc-200'
+  return 'text-zinc-500'
+}
+
+function HexDisplay({ hex }: { hex: string }) {
+  const tokens = hex.trim().split(/\s+/).filter(Boolean)
+  return (
+    <>
+      {tokens.map((t, i) => {
+        const b = parseInt(t, 16)
+        return (
+          <span key={i} className={`${hexByteClass(isNaN(b) ? -1 : b)} mr-0.5`}>{t}</span>
+        )
+      })}
+    </>
+  )
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function SerialTab() {
@@ -122,13 +144,17 @@ export default function SerialTab() {
   const [autoScroll, setAutoScroll]   = useState(true)
   const [showTimestamps, setShowTimestamps] = useState(true)
   const [vt100, setVt100]             = useState(false)
-  const [recording, setRecording]     = useState(false)
+  const [logFileName, setLogFileName]  = useState('')     // '' = not logging
+  const [fallbackName, setFallbackName] = useState(() =>
+    `serial_${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.log`
+  )
+  const supportsFilePicker = 'showSaveFilePicker' in window
   const bottomRef    = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const writerRef  = useRef<any>(null)          // FileSystemWritableFileStream or null
-  const bufferRef  = useRef<string[]>([])       // fallback for browsers without File System Access API
-  const recordingRef = useRef(false)            // mirror of recording state, readable in stale closures
+  const writerRef    = useRef<any>(null)                  // FileSystemWritableFileStream or null
+  const bufferRef    = useRef<string[]>([])               // fallback buffer
+  const logActiveRef = useRef(false)                      // mirror of logFileName !== '', readable in stale closures
 
   useEffect(() => { refreshPorts() }, [])
 
@@ -151,7 +177,7 @@ export default function SerialTab() {
     } else if (msg.type === 'data') {
       const now = new Date()
       const ts = now.toLocaleTimeString('en-US', { hour12: false }) + '.' + String(now.getMilliseconds()).padStart(3, '0')
-      if (recordingRef.current) {
+      if (logActiveRef.current) {
         const line = `[${ts}] RX | ${msg.text ?? msg.hex ?? ''}\n`
         writerRef.current ? writerRef.current.write(line) : bufferRef.current.push(line)
       }
@@ -164,41 +190,47 @@ export default function SerialTab() {
 
   useWebSocket('/ws/serial', handleWsMessage)
 
-  async function startRecording() {
-    bufferRef.current = []
+  async function selectLogFile() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if ('showSaveFilePicker' in window) {
+    if (supportsFilePicker) {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const handle = await (window as any).showSaveFilePicker({
-          suggestedName: `serial_${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.log`,
+          suggestedName: fallbackName,
           types: [{ description: 'Log file', accept: { 'text/plain': ['.log', '.txt'] } }],
         })
-        writerRef.current = await handle.createWritable()
-      } catch {
-        return // user cancelled picker
-      }
+        const file = await handle.getFile()
+        const writer = await handle.createWritable({ keepExistingData: true })
+        await writer.seek(file.size)
+        if (writerRef.current) await writerRef.current.close()
+        writerRef.current = writer
+        logActiveRef.current = true
+        setLogFileName(handle.name)
+      } catch { /* user cancelled */ }
+    } else {
+      // Fallback: buffer in memory, download on stop
+      bufferRef.current = []
+      logActiveRef.current = true
+      setLogFileName(fallbackName)
     }
-    recordingRef.current = true
-    setRecording(true)
   }
 
-  async function stopRecording() {
-    recordingRef.current = false
-    setRecording(false)
+  async function closeLogFile() {
+    logActiveRef.current = false
+    const name = logFileName
+    setLogFileName('')
     if (writerRef.current) {
       await writerRef.current.close()
       writerRef.current = null
     } else if (bufferRef.current.length > 0) {
-      // Fallback: download buffered content
       const blob = new Blob([bufferRef.current.join('')], { type: 'text/plain' })
       const a = document.createElement('a')
       a.href = URL.createObjectURL(blob)
-      a.download = `serial_${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.log`
+      a.download = name
       a.click()
       URL.revokeObjectURL(a.href)
+      bufferRef.current = []
     }
-    bufferRef.current = []
   }
 
   async function connect() {
@@ -210,11 +242,17 @@ export default function SerialTab() {
     if (!input.trim() || !status.connected) return
     const now = new Date()
     const ts = now.toLocaleTimeString('en-US', { hour12: false }) + '.' + String(now.getMilliseconds()).padStart(3, '0')
-    if (recordingRef.current) {
+    if (logActiveRef.current) {
       const line = `[${ts}] TX | ${input}\n`
       writerRef.current ? writerRef.current.write(line) : bufferRef.current.push(line)
     }
-    setLines(prev => [...prev.slice(-5000), { id: lineSeq++, timestamp: ts, direction: 'tx', text: input, hex: '' }])
+    const txHex = dataType === 'hex'
+      ? input.trim()
+      : Array.from(input).map(c => c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')).join(' ')
+    const txText = dataType === 'hex'
+      ? input.trim().split(/\s+/).map(h => { const b = parseInt(h, 16); return b >= 0x20 && b < 0x7f ? String.fromCharCode(b) : '.' }).join('')
+      : input
+    setLines(prev => [...prev.slice(-5000), { id: lineSeq++, timestamp: ts, direction: 'tx', text: txText, hex: txHex }])
     await serial.send({ data: input, data_type: dataType, line_ending: lineEnding })
     setInput('')
   }
@@ -228,15 +266,31 @@ export default function SerialTab() {
   }
 
   function renderContent(l: TermLine) {
-    let raw: string
-    if (displayMode === 'hex')  raw = l.hex || ''
-    else if (displayMode === 'both') raw = `${l.text || ''}  [${l.hex}]`
-    else raw = l.text || ''
+    const isError = l.text?.startsWith('[ERROR]')
+    if (isError) return <span className="text-red-400">{l.text}</span>
 
-    if (vt100 && l.direction === 'rx' && displayMode !== 'hex') {
-      return <AnsiLine text={raw} />
+    if (displayMode === 'hex') {
+      return <HexDisplay hex={l.hex || ''} />
     }
-    return <>{raw}</>
+
+    if (displayMode === 'both') {
+      return (
+        <span className="flex gap-4">
+          <span className="shrink-0 w-[22ch]">
+            <HexDisplay hex={l.hex || ''} />
+          </span>
+          <span className="text-yellow-400 break-all whitespace-pre-wrap">
+            {vt100 && l.direction === 'rx'
+              ? <AnsiLine text={l.text || ''} />
+              : l.text || ''}
+          </span>
+        </span>
+      )
+    }
+
+    // ASCII mode
+    if (vt100 && l.direction === 'rx') return <AnsiLine text={l.text || ''} />
+    return <span className="text-yellow-400">{l.text || ''}</span>
   }
 
   const dotClass = status.connected ? 'status-dot-green' : 'status-dot-red'
@@ -329,16 +383,28 @@ export default function SerialTab() {
             <select className="select text-xs py-0.5 px-1 h-6" value={displayMode} onChange={e => setDisplayMode(e.target.value)}>
               {DISPLAY_MODES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
-            {recording ? (
-              <button
-                className="btn text-xs px-2 py-0.5 bg-red-700/30 border border-red-600/40 text-red-400 hover:bg-red-700/50 flex items-center gap-1.5"
-                onClick={stopRecording}
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
-                Stop
-              </button>
+            {logFileName ? (
+              <span className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shrink-0" />
+                <span className="text-xs text-zinc-400 max-w-[14ch] truncate" title={logFileName}>{logFileName}</span>
+                <button
+                  className="btn text-xs px-2 py-0.5 bg-red-700/30 border border-red-600/40 text-red-400 hover:bg-red-700/50"
+                  onClick={closeLogFile}
+                  title={supportsFilePicker ? 'Stop logging' : 'Stop logging and download'}
+                >✕</button>
+              </span>
+            ) : supportsFilePicker ? (
+              <button className="btn-ghost text-xs px-2 py-0.5" onClick={selectLogFile}>Log to file</button>
             ) : (
-              <button className="btn-ghost text-xs px-2 py-0.5" onClick={startRecording}>Save</button>
+              <span className="flex items-center gap-1">
+                <input
+                  className="input text-xs py-0.5 w-32 mono"
+                  value={fallbackName}
+                  onChange={e => setFallbackName(e.target.value)}
+                  title="Log filename"
+                />
+                <button className="btn-ghost text-xs px-2 py-0.5" onClick={selectLogFile}>Log</button>
+              </span>
             )}
             <button className="btn-ghost text-xs px-2 py-0.5" onClick={() => setLines([])}>Clear</button>
           </div>
@@ -347,14 +413,12 @@ export default function SerialTab() {
         <div ref={containerRef} className="flex-1 overflow-y-auto p-2 mono text-xs">
           {lines.length === 0 && <div className="text-zinc-600 italic">No data yet…</div>}
           {lines.map(l => (
-            <div key={l.id} className={`flex gap-2 leading-5 ${
-              l.text?.startsWith('[ERROR]') ? 'text-red-400' :
-              l.direction === 'tx' ? 'text-blue-400' :
-              vt100 ? 'text-zinc-300' : 'text-green-400'
-            }`}>
-              {showTimestamps && <span className="text-zinc-700 shrink-0">{l.timestamp}</span>}
-              <span className="text-zinc-600 shrink-0">{l.direction === 'tx' ? 'TX' : 'RX'}</span>
-              <span className="break-all whitespace-pre-wrap">{renderContent(l)}</span>
+            <div key={l.id} className="flex gap-2 leading-5 items-baseline">
+              {showTimestamps && <span className="text-amber-500 shrink-0">{l.timestamp}</span>}
+              <span className={`shrink-0 font-semibold ${l.direction === 'tx' ? 'text-green-400' : 'text-blue-400'}`}>
+                {l.direction === 'tx' ? 'TX' : 'RX'}
+              </span>
+              <span className="break-all whitespace-pre-wrap min-w-0">{renderContent(l)}</span>
             </div>
           ))}
           <div ref={bottomRef} />
