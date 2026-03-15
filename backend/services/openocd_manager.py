@@ -275,7 +275,29 @@ class OpenOCDManager:
     # ──────────────────────────────────────────────────────────────────────────
 
     async def memory_read(self, address: str, size: int) -> list[dict]:
-        """Returns list of {address, words} dicts parsed from mdw output."""
+        """Returns list of {address, words} dicts.
+        Uses dump_image for large reads (fast binary transfer, no output size limit).
+        Falls back to mdw for small reads.
+        """
+        LARGE_THRESHOLD = 1024  # bytes
+
+        addr_int = int(address, 16) if address.lower().startswith('0x') else int(address)
+
+        if size > LARGE_THRESHOLD:
+            dump_path = str(self.upload_dir / "_mem_read.bin")
+            await self.send_command(f"dump_image {dump_path} 0x{addr_int:08X} {size}")
+            if not os.path.exists(dump_path):
+                return []
+            with open(dump_path, "rb") as f:
+                data = f.read()
+            rows = []
+            for off in range(0, len(data), 16):
+                chunk = data[off:off + 16]
+                chunk = chunk + b"\xff" * (16 - len(chunk))
+                words = [int.from_bytes(chunk[i:i + 4], "little") for i in range(0, 16, 4)]
+                rows.append({"address": f"0x{addr_int + off:08X}", "words": words})
+            return rows
+
         word_count = (size + 3) // 4
         cmd = f"mdw {address} {word_count}"
         raw = await self.send_command(cmd)
@@ -308,6 +330,72 @@ class OpenOCDManager:
 
     async def flash_info(self) -> str:
         return await self.send_command("flash info 0")
+
+    async def flash_get_page_size(self) -> int:
+        """Query flash info 0 and return the minimum sector/page size in bytes."""
+        import re
+        raw = await self.send_command("flash info 0")
+        # Parse lines like: #  0: 0x00000000 (0x400 1024B) erased
+        sizes = re.findall(r'\(0x([0-9a-fA-F]+)\s+\d+', raw)
+        if sizes:
+            return min(int(s, 16) for s in sizes)
+        return 2048  # default 2 KB
+
+    async def flash_patch_bytes(self, address: int, data: bytes) -> dict:
+        """
+        Patch flash memory bytes.
+        Reads the affected page(s), applies changes, erases, reprograms.
+        Returns {ok, result, page_size, page_base}.
+        """
+        import os
+        page_size = await self.flash_get_page_size()
+        start_page = (address // page_size) * page_size
+        end_page = (((address + len(data) - 1) // page_size) + 1) * page_size
+        total_size = end_page - start_page
+
+        dump_path = str(self.upload_dir / "_patch_dump.bin")
+        patch_path = str(self.upload_dir / "_patch_write.bin")
+
+        # reset halt clears any stale flash error flags (PGSERR/PGAERR/PROGERR)
+        # that would cause subsequent writes to fail
+        await self.send_command("reset halt")
+
+        # Read current page content
+        await self.send_command(f"dump_image {dump_path} 0x{start_page:08X} {total_size}")
+        if not os.path.exists(dump_path):
+            return {"ok": False, "result": "Failed to dump flash page"}
+
+        with open(dump_path, "rb") as f:
+            page_data = bytearray(f.read())
+
+        # Pad if short; also ensure size is a multiple of 8 (STM32L4 double-word requirement)
+        if len(page_data) < total_size:
+            page_data.extend(b"\xff" * (total_size - len(page_data)))
+        pad = (8 - len(page_data) % 8) % 8
+        if pad:
+            page_data.extend(b"\xff" * pad)
+
+        # Apply modifications
+        offset_in_page = address - start_page
+        for i, b in enumerate(data):
+            if offset_in_page + i < len(page_data):
+                page_data[offset_in_page + i] = b
+
+        # Write patched data
+        with open(patch_path, "wb") as f:
+            f.write(bytes(page_data))
+
+        # unlock: clears FLASH lock bit; erase: handles sector erase before write
+        prog_result = await self.send_command(
+            f"flash write_image erase unlock {patch_path} 0x{start_page:08X} bin"
+        )
+        ok = "error" not in prog_result.lower()
+        return {
+            "ok": ok,
+            "result": prog_result,
+            "page_size": page_size,
+            "page_base": f"0x{start_page:08X}",
+        }
 
 
 openocd_manager = OpenOCDManager()

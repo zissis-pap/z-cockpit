@@ -7,41 +7,112 @@ interface Props {
   rows: MemoryRow[]
   onRows: (rows: MemoryRow[]) => void
   onLog: (text: string, level?: string) => void
+  firmwareData: Uint8Array | null
+  firmwareBaseAddr: string
 }
+
+const BYTES_PER_ROW = 16
 
 function wordsToBytes(words: number[]): number[] {
   const bytes: number[] = []
   for (const w of words) {
-    bytes.push((w) & 0xff, (w >> 8) & 0xff, (w >> 16) & 0xff, (w >> 24) & 0xff)
+    bytes.push(w & 0xff, (w >> 8) & 0xff, (w >> 16) & 0xff, (w >> 24) & 0xff)
   }
   return bytes
 }
 
-function toAscii(b: number): string {
-  return b >= 32 && b < 127 ? String.fromCharCode(b) : '.'
+function toHex(n: number, pad = 2) {
+  return n.toString(16).toUpperCase().padStart(pad, '0')
 }
 
-export default function MemoryViewer({ connected, rows, onRows, onLog }: Props) {
-  const [address, setAddress] = useState('0x08000000')
-  const [size, setSize] = useState(256)
-  const [busy, setBusy] = useState(false)
-  const [autoRefresh, setAutoRefresh] = useState(false)
-  const [intervalMs, setIntervalMs] = useState(2000)
-  const [timerRef, setTimerRef] = useState<ReturnType<typeof setInterval> | null>(null)
+function isPrintable(b: number) { return b >= 0x20 && b < 0x7f }
 
-  const doRead = useCallback(async () => {
+function byteClass(b: number): string {
+  if (b === 0x00) return 'text-zinc-700'
+  if (isPrintable(b)) return 'text-zinc-200'
+  return 'text-zinc-500'
+}
+
+/** Flatten MemoryRow[] into { baseAddr, data } */
+function flattenRows(rows: MemoryRow[]): { baseAddr: number; data: Uint8Array } | null {
+  if (rows.length === 0) return null
+  const baseAddr = parseInt(rows[0].address, 16)
+  const allBytes: number[] = []
+  for (const row of rows) allBytes.push(...wordsToBytes(row.words))
+  return { baseAddr, data: new Uint8Array(allBytes) }
+}
+
+export default function MemoryViewer({ connected, rows, onRows, onLog, firmwareData, firmwareBaseAddr }: Props) {
+  const [address, setAddress] = useState('0x08000000')
+  const [size, setSize]       = useState(256)
+  const [busy, setBusy]       = useState(false)
+  const [autoRefresh, setAutoRefresh]   = useState(false)
+  const [intervalMs, setIntervalMs]     = useState(2000)
+  const [timerRef, setTimerRef]         = useState<ReturnType<typeof setInterval> | null>(null)
+
+  // Edit state
+  const [cursor, setCursor]             = useState<number | null>(null)  // absolute address
+  const [editBuf, setEditBuf]           = useState('')
+  const [modifications, setModifications] = useState<Map<number, number>>(new Map())
+
+  // Verify (compare) mode
+  const [verifyMode, setVerifyMode]     = useState(false)
+  const [writing, setWriting]           = useState(false)
+
+  const flat = flattenRows(rows)
+
+  // Get byte at absolute address (modifications take priority)
+  function getByte(absAddr: number): number | undefined {
+    if (modifications.has(absAddr)) return modifications.get(absAddr)!
+    if (!flat) return undefined
+    const off = absAddr - flat.baseAddr
+    if (off < 0 || off >= flat.data.length) return undefined
+    return flat.data[off]
+  }
+
+  // Get firmware byte at absolute address
+  function getFirmwareByte(absAddr: number): number | undefined {
+    if (!firmwareData) return undefined
+    const firmBase = parseInt(firmwareBaseAddr, 16)
+    const off = absAddr - firmBase
+    if (off < 0 || off >= firmwareData.length) return undefined
+    return firmwareData[off]
+  }
+
+  const doRead = useCallback(async (addrOverride?: string, sizeOverride?: number) => {
     if (!connected) { onLog('Not connected', 'error'); return }
     setBusy(true)
+    const readAddr = addrOverride ?? address
+    const readSize = sizeOverride ?? size
     try {
-      const res = await openocd.memory.read(address, size)
-      if (res.ok) onRows(res.rows)
-      else onLog('Memory read failed', 'error')
+      const res = await openocd.memory.read(readAddr, readSize)
+      if (res.ok) {
+        onRows(res.rows)
+        setModifications(new Map())
+        setCursor(null)
+        setEditBuf('')
+      } else {
+        onLog('Memory read failed', 'error')
+      }
     } catch (e) {
       onLog(`Memory read error: ${e}`, 'error')
     } finally {
       setBusy(false)
     }
   }, [connected, address, size, onLog, onRows])
+
+  async function doVerify() {
+    if (firmwareData) {
+      const addr = firmwareBaseAddr
+      const sz = firmwareData.length
+      setAddress(addr)
+      setSize(sz)
+      await doRead(addr, sz)
+    } else {
+      await doRead()
+    }
+    setVerifyMode(true)
+  }
 
   function toggleAutoRefresh() {
     if (autoRefresh) {
@@ -55,18 +126,108 @@ export default function MemoryViewer({ connected, rows, onRows, onLog }: Props) 
     }
   }
 
-  // Flatten rows into display rows of 16 bytes each
-  const displayRows: Array<{ addr: number; bytes: number[] }> = []
-  for (const row of rows) {
-    const bytes = wordsToBytes(row.words)
-    const baseAddr = parseInt(row.address, 16)
-    for (let i = 0; i < bytes.length; i += 16) {
-      displayRows.push({ addr: baseAddr + i, bytes: bytes.slice(i, i + 16) })
+  function handleCellClick(absAddr: number) {
+    if (verifyMode) return
+    setCursor(absAddr)
+    setEditBuf('')
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (verifyMode || cursor === null || !flat) return
+    const end = flat.baseAddr + flat.data.length - 1
+    if ('0123456789ABCDEFabcdef'.includes(e.key)) {
+      e.preventDefault()
+      const buf = editBuf + e.key.toUpperCase()
+      if (buf.length === 2) {
+        const newByte = parseInt(buf, 16)
+        setModifications(prev => new Map(prev).set(cursor, newByte))
+        setEditBuf('')
+        setCursor(prev => (prev !== null && prev < end ? prev + 1 : prev))
+      } else {
+        setEditBuf(buf)
+      }
+    } else if (e.key === 'Escape') {
+      setModifications(new Map())
+      setCursor(null)
+      setEditBuf('')
+    } else if (e.key === 'Backspace') {
+      e.preventDefault()
+      if (editBuf) { setEditBuf('') }
+      else if (cursor > flat.baseAddr) { setCursor(cursor - 1); setEditBuf('') }
+    } else if (e.key === 'ArrowRight') { e.preventDefault(); if (cursor < end) setCursor(cursor + 1) }
+    else if (e.key === 'ArrowLeft')  { e.preventDefault(); if (cursor > flat.baseAddr) setCursor(cursor - 1) }
+    else if (e.key === 'ArrowDown')  { e.preventDefault(); if (cursor + BYTES_PER_ROW <= end) setCursor(cursor + BYTES_PER_ROW) }
+    else if (e.key === 'ArrowUp')    { e.preventDefault(); if (cursor - BYTES_PER_ROW >= flat.baseAddr) setCursor(cursor - BYTES_PER_ROW) }
+  }
+
+  async function doWrite() {
+    if (!connected || modifications.size === 0) return
+    setWriting(true)
+    onLog(`Writing ${modifications.size} modified byte(s) to flash…`, 'info')
+    try {
+      // Group contiguous modifications into runs
+      const addrs = [...modifications.keys()].sort((a, b) => a - b)
+      // For simplicity send as one call spanning the full range
+      const minAddr = addrs[0]
+      const maxAddr = addrs[addrs.length - 1]
+      const len = maxAddr - minAddr + 1
+      const data: number[] = []
+      for (let i = 0; i < len; i++) {
+        const addr = minAddr + i
+        data.push(modifications.has(addr) ? modifications.get(addr)! : (getByte(addr) ?? 0xff))
+      }
+      const res = await openocd.flash.patchBytes(minAddr, data)
+      if (res.ok) {
+        onLog(`Flash patched OK (page_size=${res.page_size} B, page_base=${res.page_base})`, 'info')
+        setModifications(new Map())
+        setCursor(null)
+        await doRead()
+      } else {
+        onLog(`Flash patch failed: ${res.result}`, 'error')
+      }
+    } catch (e) {
+      onLog(`Write error: ${e}`, 'error')
+    } finally {
+      setWriting(false)
     }
   }
 
+  // Build display rows — in verify mode cover the union of memory + firmware ranges
+  const displayRows: Array<{ addr: number }> = []
+  if (verifyMode && firmwareData) {
+    const firmBase = parseInt(firmwareBaseAddr, 16)
+    const start = flat ? Math.min(flat.baseAddr, firmBase) : firmBase
+    const end   = flat
+      ? Math.max(flat.baseAddr + flat.data.length, firmBase + firmwareData.length)
+      : firmBase + firmwareData.length
+    for (let addr = start; addr < end; addr += BYTES_PER_ROW) {
+      displayRows.push({ addr })
+    }
+  } else if (flat) {
+    for (let off = 0; off < flat.data.length; off += BYTES_PER_ROW) {
+      displayRows.push({ addr: flat.baseAddr + off })
+    }
+  }
+
+  const hasMods = modifications.size > 0
+
+  // ── Colour helpers for verify mode ────────────────────────────────────────
+  function verifyCellClass(mem: number | undefined, fw: number | undefined): string {
+    if (mem === undefined) return 'text-zinc-800'
+    if (fw === undefined)  return byteClass(mem)   // no firmware data at this address
+    if (mem !== fw)        return 'text-red-400'
+    return byteClass(mem)
+  }
+
+  function fwCellClass(mem: number | undefined, fw: number | undefined): string {
+    if (fw === undefined) return 'text-zinc-800'
+    if (mem === undefined) return 'text-purple-400'
+    if (mem !== fw) return 'text-blue-400'
+    return byteClass(fw)
+  }
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" onKeyDown={handleKeyDown} tabIndex={-1} style={{ outline: 'none' }}>
       {/* Controls */}
       <div className="panel">
         <div className="panel-header">Memory Read</div>
@@ -83,8 +244,8 @@ export default function MemoryViewer({ connected, rows, onRows, onLog }: Props) 
                 value={size} onChange={e => setSize(Number(e.target.value))} min={4} step={4} />
             </div>
           </div>
-          <div className="flex gap-2 items-center">
-            <button className="btn-primary" onClick={doRead} disabled={busy || !connected}>
+          <div className="flex gap-2 items-center flex-wrap">
+            <button className="btn-primary" onClick={() => doRead()} disabled={busy || !connected}>
               {busy ? 'Reading…' : 'Read'}
             </button>
             <button className={`btn-ghost ${autoRefresh ? 'border-amber-500 text-amber-400' : ''}`}
@@ -96,6 +257,24 @@ export default function MemoryViewer({ connected, rows, onRows, onLog }: Props) 
                 value={intervalMs} onChange={e => setIntervalMs(Number(e.target.value))}
                 min={500} step={500} title="Interval ms" />
             )}
+            <button
+              className={`btn-ghost ${verifyMode ? 'border-blue-500/60 text-blue-400' : ''}`}
+              onClick={() => verifyMode ? setVerifyMode(false) : doVerify()}
+              disabled={!connected || !firmwareData}
+              title={!firmwareData ? 'Load a firmware file in Flash Ops first' : 'Compare memory with firmware file'}
+            >
+              {verifyMode ? '✓ Exit Verify' : '⊞ Verify'}
+            </button>
+            {hasMods && (
+              <button className="btn-primary" onClick={doWrite} disabled={writing || !connected}>
+                {writing ? 'Writing…' : `⚡ Write ${modifications.size}B to Flash`}
+              </button>
+            )}
+            {hasMods && (
+              <button className="btn-ghost text-xs" onClick={() => { setModifications(new Map()); setEditBuf('') }}>
+                Discard edits
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -103,41 +282,134 @@ export default function MemoryViewer({ connected, rows, onRows, onLog }: Props) 
       {/* Hex table */}
       {displayRows.length > 0 && (
         <div className="panel overflow-hidden">
-          <div className="panel-header">
-            Hex Dump — {address} ({size} bytes)
+          <div className="panel-header flex items-center justify-between">
+            <span>{verifyMode ? `Verify — ${address} vs firmware` : `Hex Dump — ${address} (${size} bytes)`}</span>
+            {verifyMode && firmwareData && (
+              <span className="text-[10px] font-normal normal-case flex items-center gap-3">
+                <span className="text-zinc-500">■ <span className="text-red-400">Memory differs</span></span>
+                <span className="text-zinc-500">■ <span className="text-blue-400">Firmware differs</span></span>
+                <span className="text-zinc-500">■ <span className="text-green-400/60">Match</span></span>
+              </span>
+            )}
+            {!verifyMode && flat && (
+              <span className="text-[10px] font-normal normal-case text-zinc-500">
+                Click bytes to edit · Type hex · Esc to cancel
+              </span>
+            )}
           </div>
-          <div className="overflow-auto max-h-[50vh]">
-            <table className="mono text-xs w-full border-collapse">
+          <div className="overflow-auto max-h-[60vh]">
+            <table className="mono text-xs border-collapse" style={{ minWidth: verifyMode ? 'max-content' : undefined, width: verifyMode ? undefined : '100%' }}>
               <thead className="sticky top-0 bg-[#161b22] border-b border-[#30363d]">
-                <tr>
-                  <th className="px-2 py-1 text-left text-blue-400 font-normal">Address</th>
-                  {Array.from({ length: 16 }, (_, i) => (
-                    <th key={i} className="px-1 py-1 text-zinc-500 font-normal w-7 text-center">
-                      {i.toString(16).toUpperCase().padStart(2, '0')}
-                    </th>
-                  ))}
-                  <th className="px-2 py-1 text-green-600 font-normal">ASCII</th>
-                </tr>
+                {verifyMode ? (
+                  <tr>
+                    <th className="px-2 py-1 text-left text-blue-400 font-normal">Address</th>
+                    {Array.from({ length: BYTES_PER_ROW }, (_, i) => (
+                      <th key={`m${i}`} className="px-0.5 py-1 text-red-500/50 font-normal w-7 text-center">{toHex(i, 2)}</th>
+                    ))}
+                    <th className="px-2 py-1 text-red-400/40 font-normal text-left">MEM</th>
+                    <th className="px-3 py-1" />
+                    {Array.from({ length: BYTES_PER_ROW }, (_, i) => (
+                      <th key={`f${i}`} className="px-0.5 py-1 text-blue-500/50 font-normal w-7 text-center">{toHex(i, 2)}</th>
+                    ))}
+                    <th className="px-2 py-1 text-blue-400/40 font-normal text-left">FW</th>
+                  </tr>
+                ) : (
+                  <tr>
+                    <th className="px-2 py-1 text-left text-blue-400 font-normal">Address</th>
+                    {Array.from({ length: BYTES_PER_ROW }, (_, i) => (
+                      <th key={i} className="px-1 py-1 text-zinc-500 font-normal w-7 text-center">{toHex(i, 2)}</th>
+                    ))}
+                    <th className="px-2 py-1 text-green-600 font-normal">ASCII</th>
+                  </tr>
+                )}
               </thead>
               <tbody>
-                {displayRows.map((row, ri) => (
-                  <tr key={ri} className="hover:bg-[#21262d] border-b border-[#21262d]/50">
-                    <td className="px-2 py-0.5 text-blue-400 whitespace-nowrap">
-                      0x{row.addr.toString(16).padStart(8, '0').toUpperCase()}
-                    </td>
-                    {Array.from({ length: 16 }, (_, ci) => {
-                      const b = row.bytes[ci]
-                      return (
-                        <td key={ci} className="px-0.5 py-0.5 text-center text-zinc-300">
-                          {b !== undefined ? b.toString(16).padStart(2, '0').toUpperCase() : '  '}
+                {displayRows.map(({ addr }) => {
+                  // Collect 16 bytes for this row
+                  const memBytes: (number | undefined)[] = Array.from({ length: BYTES_PER_ROW }, (_, i) => getByte(addr + i))
+                  const fwBytes:  (number | undefined)[] = Array.from({ length: BYTES_PER_ROW }, (_, i) => getFirmwareByte(addr + i))
+                  const hasDiff = verifyMode && memBytes.some((m, i) => m !== fwBytes[i] && (m !== undefined || fwBytes[i] !== undefined))
+
+                  if (verifyMode) {
+                    return (
+                      <tr key={addr} className={`border-b border-[#21262d]/50 ${hasDiff ? 'bg-[#0f0e0a]' : 'hover:bg-[#21262d]'}`}>
+                        <td className={`px-2 py-0.5 whitespace-nowrap ${hasDiff ? 'text-amber-500/70' : 'text-blue-400'}`}>
+                          0x{addr.toString(16).padStart(8, '0').toUpperCase()}
                         </td>
-                      )
-                    })}
-                    <td className="px-2 py-0.5 text-green-500 whitespace-pre">
-                      {row.bytes.map(b => toAscii(b)).join('')}
-                    </td>
-                  </tr>
-                ))}
+                        {memBytes.map((m, i) => (
+                          <td key={`m${i}`} className="px-0.5 py-0.5 text-center">
+                            {m !== undefined
+                              ? <span className={verifyCellClass(m, fwBytes[i])}>{toHex(m)}</span>
+                              : <span className="text-zinc-800">──</span>}
+                          </td>
+                        ))}
+                        <td className="px-2 py-0.5 whitespace-pre">
+                          {memBytes.map((m, i) => {
+                            const cls = m === undefined ? 'text-zinc-800' : m !== fwBytes[i] ? 'text-red-400' : 'text-green-500/60'
+                            return <span key={i} className={cls}>{m !== undefined ? (isPrintable(m) ? String.fromCharCode(m) : '·') : ' '}</span>
+                          })}
+                        </td>
+                        <td className="px-3 border-l-2 border-[#30363d]" />
+                        {fwBytes.map((fw, i) => (
+                          <td key={`f${i}`} className="px-0.5 py-0.5 text-center">
+                            {fw !== undefined
+                              ? <span className={fwCellClass(memBytes[i], fw)}>{toHex(fw)}</span>
+                              : <span className="text-zinc-800">──</span>}
+                          </td>
+                        ))}
+                        <td className="px-2 py-0.5 whitespace-pre">
+                          {fwBytes.map((fw, i) => {
+                            const cls = fw === undefined ? 'text-zinc-800' : fw !== memBytes[i] ? 'text-blue-400' : 'text-green-500/60'
+                            return <span key={i} className={cls}>{fw !== undefined ? (isPrintable(fw) ? String.fromCharCode(fw) : '·') : ' '}</span>
+                          })}
+                        </td>
+                      </tr>
+                    )
+                  }
+
+                  // Normal / edit view
+                  return (
+                    <tr key={addr} className="hover:bg-[#21262d] border-b border-[#21262d]/50">
+                      <td className="px-2 py-0.5 text-blue-400 whitespace-nowrap">
+                        0x{addr.toString(16).padStart(8, '0').toUpperCase()}
+                      </td>
+                      {memBytes.map((b, i) => {
+                        const absAddr = addr + i
+                        const isCursor = absAddr === cursor
+                        const isMod = modifications.has(absAddr)
+                        return (
+                          <td key={i} className="px-0.5 py-0.5 text-center">
+                            {b !== undefined ? (
+                              <span
+                                className={`inline-block w-6 rounded cursor-pointer transition-colors ${
+                                  isCursor
+                                    ? 'bg-blue-600 text-white'
+                                    : isMod
+                                    ? 'bg-amber-500/10 text-amber-400'
+                                    : byteClass(b) + ' hover:bg-[#30363d]'
+                                }`}
+                                onClick={() => handleCellClick(absAddr)}
+                              >
+                                {isCursor && editBuf ? editBuf + '_' : toHex(b)}
+                              </span>
+                            ) : <span className="inline-block w-6 text-zinc-800">  </span>}
+                          </td>
+                        )
+                      })}
+                      <td className="px-2 py-0.5 text-green-500 whitespace-pre">
+                        {memBytes.map((b, i) => {
+                          const absAddr = addr + i
+                          const isCursor = absAddr === cursor
+                          const isMod = modifications.has(absAddr)
+                          const cls = isCursor ? 'bg-blue-600 text-white rounded' : isMod ? 'text-amber-400' : 'hover:text-green-300'
+                          return b !== undefined
+                            ? <span key={i} className={`cursor-pointer ${cls}`} onClick={() => handleCellClick(absAddr)}>{isPrintable(b) ? String.fromCharCode(b) : '·'}</span>
+                            : <span key={i}> </span>
+                        })}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

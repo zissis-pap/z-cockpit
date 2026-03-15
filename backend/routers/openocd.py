@@ -206,3 +206,19 @@ async def memory_write(req: MemWriteRequest):
 async def flash_info():
     result = await openocd_manager.flash_info()
     return {"ok": True, "result": result}
+
+
+class FlashPatchRequest(BaseModel):
+    address: int        # absolute address as integer
+    data: list[int]     # byte values to write
+
+
+@router.post("/flash/patch_bytes")
+async def flash_patch_bytes(req: FlashPatchRequest):
+    return await openocd_manager.flash_patch_bytes(req.address, bytes(req.data))
+
+
+@router.get("/flash/page_size")
+async def flash_page_size():
+    size = await openocd_manager.flash_get_page_size()
+    return {"ok": True, "page_size": size}

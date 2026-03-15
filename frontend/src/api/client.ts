@@ -42,6 +42,8 @@ export const openocd = {
     reset:   ()                                          => req('POST', '/openocd/flash/reset'),
     info:    ()                                          => req('GET', '/openocd/flash/info'),
     downloadUrl: (filename: string) => `${BASE}/openocd/flash/download/${filename}`,
+    patchBytes: (address: number, data: number[]) => req<{ ok: boolean; result: string; page_size?: number; page_base?: string }>('POST', '/openocd/flash/patch_bytes', { address, data }),
+    pageSize:   () => req<{ ok: boolean; page_size: number }>('GET', '/openocd/flash/page_size'),
   },
 
   memory: {

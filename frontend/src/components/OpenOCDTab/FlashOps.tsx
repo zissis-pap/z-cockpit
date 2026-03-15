@@ -1,21 +1,29 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { openocd } from '../../api/client'
 
 interface Props {
   connected: boolean
   onLog: (text: string, level?: string) => void
+  onFirmwareReady: (filename: string, data: Uint8Array, baseAddress: string) => void
 }
 
-export default function FlashOps({ connected, onLog }: Props) {
+export default function FlashOps({ connected, onLog, onFirmwareReady }: Props) {
   const [uploadedFile, setUploadedFile] = useState<string>('')
   const [uploadedSize, setUploadedSize] = useState<number>(0)
   const [baseAddress, setBaseAddress] = useState('0x08000000')
+  const [localData, setLocalData] = useState<Uint8Array | null>(null)
   const [eraseSize, setEraseSize] = useState('0x20000')
   const [readAddress, setReadAddress] = useState('0x08000000')
   const [readSize, setReadSize] = useState('0x10000')
   const [progress, setProgress] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (localData && uploadedFile) {
+      onFirmwareReady(uploadedFile, localData, baseAddress)
+    }
+  }, [baseAddress]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -25,6 +33,13 @@ export default function FlashOps({ connected, onLog }: Props) {
       setUploadedFile(res.filename)
       setUploadedSize(res.size)
       onLog(`Firmware uploaded: ${res.filename} (${res.size} bytes)`, 'info')
+      const reader = new FileReader()
+      reader.onload = ev => {
+        const arr = new Uint8Array(ev.target!.result as ArrayBuffer)
+        setLocalData(arr)
+        onFirmwareReady(res.filename, arr, baseAddress)
+      }
+      reader.readAsArrayBuffer(file)
     } else {
       onLog(`Upload failed: ${res.error}`, 'error')
     }
