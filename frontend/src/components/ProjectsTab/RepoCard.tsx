@@ -7,6 +7,7 @@ interface Props {
   busy: boolean
   onOpen: (repo: GitRepo) => void
   onAction: (repo: GitRepo, action: 'clone' | 'pull' | 'fetch') => void
+  onDelete: (repo: GitRepo) => void
   onStatusChange: (repoKey: string, status: RepoStatus) => void
 }
 
@@ -51,17 +52,30 @@ function timeAgo(iso: string): string {
   return `${Math.floor(days / 30)}mo ago`
 }
 
-export default function RepoCard({ repo, busy, onOpen, onAction, onStatusChange }: Props) {
+export default function RepoCard({ repo, busy, onOpen, onAction, onDelete, onStatusChange }: Props) {
   const [showCommit, setShowCommit] = useState(false)
   const [commitMsg, setCommitMsg] = useState('')
   const [changes, setChanges] = useState<Array<{ code: string; file: string }>>([])
   const [committingLocal, setCommittingLocal] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     if (showCommit && (repo.status === 'dirty' || repo.status === 'diverged')) {
       projectsApi.changes(repo.account_id, repo.name).then(r => { if (r.ok) setChanges(r.files) })
     }
   }, [showCommit, repo.account_id, repo.name, repo.status])
+
+  async function doDelete() {
+    setDeleting(true)
+    try {
+      await projectsApi.deleteLocal(repo.account_id, repo.name)
+      onDelete(repo)
+    } finally {
+      setDeleting(false)
+      setConfirmDelete(false)
+    }
+  }
 
   async function doCommit() {
     if (!commitMsg.trim()) return
@@ -161,6 +175,23 @@ export default function RepoCard({ repo, busy, onOpen, onAction, onStatusChange 
                 disabled={busy}>
                 ⟳
               </button>
+            )}
+            {s !== 'not_cloned' && !confirmDelete && (
+              <button className="btn-ghost text-xs py-1 px-2 text-red-400 hover:text-red-300"
+                title="Delete local copy"
+                onClick={() => { setConfirmDelete(true); setShowCommit(false) }}
+                disabled={busy}>
+                ✕
+              </button>
+            )}
+            {confirmDelete && (
+              <>
+                <button className="btn text-xs py-1 px-2 bg-red-700/40 border border-red-600/50 text-red-300 hover:bg-red-700/60"
+                  onClick={doDelete} disabled={deleting}>
+                  {deleting ? '…' : 'Delete?'}
+                </button>
+                <button className="btn-ghost text-xs py-1 px-1.5" onClick={() => setConfirmDelete(false)}>Cancel</button>
+              </>
             )}
           </div>
         </div>

@@ -2,11 +2,8 @@ import type { McuManufacturer } from '../types'
 
 export const INTERFACES = [
   { id: 'stlink',     name: 'ST-Link',     config: 'interface/stlink.cfg' },
-  { id: 'stlink_v2',  name: 'ST-Link v2',  config: 'interface/stlink-v2.cfg' },
-  { id: 'stlink_v21', name: 'ST-Link v2.1',config: 'interface/stlink-v2-1.cfg' },
   { id: 'jlink',      name: 'J-Link',      config: 'interface/jlink.cfg' },
   { id: 'cmsis_dap',  name: 'CMSIS-DAP',   config: 'interface/cmsis-dap.cfg' },
-  { id: 'stlink_v3',  name: 'ST-Link v3',  config: 'interface/stlink-v3.cfg' },
   { id: 'ftdi',       name: 'FTDI',        config: 'interface/ftdi/ft232h-module-swd.cfg' },
 ]
 

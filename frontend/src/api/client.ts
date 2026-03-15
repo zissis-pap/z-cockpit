@@ -63,13 +63,14 @@ export const settings = {
 // ── Projects ──────────────────────────────────────────────────────────────────
 
 export const projects = {
-  repos:   () => req<{ ok: boolean; error?: string; repos: GitRepo[] }>('GET', '/projects/repos'),
+  repos:   () => req<{ ok: boolean; error?: string; errors?: string[]; repos: GitRepo[] }>('GET', '/projects/repos'),
   status:  (accountId: string, name: string) => req<{ ok: boolean; status: RepoStatus; local_path?: string; behind?: number }>('GET', `/projects/repos/${accountId}/${name}/status`),
   changes: (accountId: string, name: string) => req<{ ok: boolean; files: Array<{ code: string; file: string }> }>('GET', `/projects/repos/${accountId}/${name}/changes`),
   clone:   (accountId: string, name: string, clone_url: string) => req<{ ok: boolean }>('POST', `/projects/repos/${accountId}/${name}/clone?clone_url=${encodeURIComponent(clone_url)}`),
   pull:    (accountId: string, name: string) => req<{ ok: boolean }>('POST', `/projects/repos/${accountId}/${name}/pull`),
   fetch:   (accountId: string, name: string) => req<{ ok: boolean }>('POST', `/projects/repos/${accountId}/${name}/fetch`),
-  commit:  (accountId: string, name: string, message: string) => req<{ ok: boolean }>('POST', `/projects/repos/${accountId}/${name}/commit`, { message }),
+  commit:      (accountId: string, name: string, message: string) => req<{ ok: boolean }>('POST', `/projects/repos/${accountId}/${name}/commit`, { message }),
+  deleteLocal: (accountId: string, name: string) => req<{ ok: boolean; error?: string }>('DELETE', `/projects/repos/${accountId}/${name}/local`),
   listFiles: (accountId: string, name: string, path = '') =>
     req<{ ok: boolean; entries: FileEntry[] }>('GET', `/projects/repos/${accountId}/${name}/files${path ? `?path=${encodeURIComponent(path)}` : ''}`),
   readFile:  (accountId: string, name: string, path: string) =>

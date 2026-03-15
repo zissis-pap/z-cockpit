@@ -1,4 +1,5 @@
 import asyncio
+import shutil
 from pathlib import Path
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
@@ -60,10 +61,13 @@ async def list_repos():
         return_exceptions=True,
     )
     repos = []
+    errors = []
     for r in all_results:
-        if not isinstance(r, Exception):
+        if isinstance(r, Exception):
+            errors.append(str(r))
+        else:
             repos.extend(r)
-    return {"ok": True, "repos": repos}
+    return {"ok": True, "repos": repos, "errors": errors if errors else None}
 
 
 @router.get("/repos/{account_id}/{repo_name}/status")
@@ -108,6 +112,22 @@ async def commit_repo(account_id: str, repo_name: str, payload: CommitPayload):
         return {"ok": False, "error": "Commit message cannot be empty"}
     asyncio.create_task(repos_manager.commit_and_push(account_id, repo_name, payload.message))
     return {"ok": True, "message": "Commit started"}
+
+
+# ── Local delete ──────────────────────────────────────────────────────────────
+
+@router.delete("/repos/{account_id}/{repo_name}/local")
+async def delete_local(account_id: str, repo_name: str):
+    root = _repo_root(account_id, repo_name)
+    if not root:
+        return {"ok": False, "error": "Account not found"}
+    if not root.exists():
+        return {"ok": False, "error": "Repository not cloned"}
+    try:
+        await asyncio.to_thread(shutil.rmtree, root)
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 # ── File browser ───────────────────────────────────────────────────────────────

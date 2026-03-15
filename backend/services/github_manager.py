@@ -36,6 +36,8 @@ async def list_repos(username: str, token: str) -> list[dict]:
                       **({"affiliation": "owner,collaborator"} if token else {})}
             try:
                 r = await c.get(url, headers=_headers(token), params=params)
+                if r.status_code == 403:
+                    raise RuntimeError("GitHub API rate limit exceeded. Add a Personal Access Token in Settings to increase the limit.")
                 if r.status_code != 200:
                     break
                 batch = r.json()

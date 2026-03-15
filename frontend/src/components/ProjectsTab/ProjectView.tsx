@@ -236,9 +236,22 @@ export default function ProjectView({ repo, onBack }: Props) {
   const [showCommit, setShowCommit] = useState(false)
   const [commitMsg, setCommitMsg] = useState('')
   const [committing, setCommitting] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   async function doPull() {
     await projectsApi.pull(repo.account_id, repo.name)
+  }
+
+  async function doDelete() {
+    setDeleting(true)
+    try {
+      await projectsApi.deleteLocal(repo.account_id, repo.name)
+      onBack()
+    } finally {
+      setDeleting(false)
+      setConfirmDelete(false)
+    }
   }
 
   async function doCommit() {
@@ -285,10 +298,29 @@ export default function ProjectView({ repo, onBack }: Props) {
 
           <button
             className={`text-xs py-1 px-2.5 btn ${showCommit ? 'bg-amber-700/30 border border-amber-600/40 text-amber-400' : 'btn-ghost'}`}
-            onClick={() => setShowCommit(v => !v)}
+            onClick={() => { setShowCommit(v => !v); setConfirmDelete(false) }}
           >
             Commit
           </button>
+
+          {confirmDelete ? (
+            <>
+              <span className="text-xs text-red-400">Delete local copy?</span>
+              <button className="btn text-xs py-1 px-2.5 bg-red-700/40 border border-red-600/50 text-red-300 hover:bg-red-700/60"
+                onClick={doDelete} disabled={deleting}>
+                {deleting ? '…' : 'Yes, delete'}
+              </button>
+              <button className="btn-ghost text-xs py-1 px-2" onClick={() => setConfirmDelete(false)}>Cancel</button>
+            </>
+          ) : (
+            <button
+              className="btn-ghost text-xs py-1 px-2.5 text-red-400 hover:text-red-300"
+              onClick={() => { setConfirmDelete(true); setShowCommit(false) }}
+              title="Delete local copy"
+            >
+              Delete
+            </button>
+          )}
         </div>
       </div>
 

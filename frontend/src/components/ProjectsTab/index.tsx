@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import type { GitRepo, RepoStatus, LogEntry, Platform } from '../../types'
 import { projects as projectsApi } from '../../api/client'
 import { useWebSocket } from '../../hooks/useWebSocket'
+import { useResizable } from '../../hooks/useResizable'
 import RepoCard from './RepoCard'
 import ProjectView from './ProjectView'
 
@@ -22,6 +23,7 @@ export default function ProjectsTab() {
   const [busyRepos, setBusyRepos] = useState<Set<string>>(new Set())
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [logCollapsed, setLogCollapsed] = useState(false)
+  const { height: logHeight, onMouseDown: logDragStart } = useResizable(180)
   const logBottomRef = useRef<HTMLDivElement>(null)
   const logContainerRef = useRef<HTMLDivElement>(null)
 
@@ -81,6 +83,7 @@ export default function ProjectsTab() {
         setRepos([])
       } else if (res.ok) {
         setRepos(res.repos)
+        if (res.errors?.length) res.errors.forEach(e => addLog(e, 'error'))
       }
     } catch (e) {
       addLog(`Failed to load repos: ${e}`, 'error')
@@ -99,6 +102,12 @@ export default function ProjectsTab() {
 
   function handleStatusChange(key: string, status: RepoStatus) {
     setRepos(prev => prev.map(r => repoKey(r) === key ? { ...r, status } : r))
+  }
+
+  function handleDelete(repo: GitRepo) {
+    setRepos(prev => prev.map(r =>
+      repoKey(r) === repoKey(repo) ? { ...r, status: 'not_cloned', local_path: '' } : r
+    ))
   }
 
   // Filtered + searched repos
@@ -231,6 +240,7 @@ export default function ProjectsTab() {
                         busy={busyRepos.has(repoKey(repo))}
                         onOpen={setOpenRepo}
                         onAction={handleAction}
+                        onDelete={handleDelete}
                         onStatusChange={handleStatusChange}
                       />
                     ))}
@@ -243,8 +253,17 @@ export default function ProjectsTab() {
       </div>
 
       {/* Log panel */}
-      <div className="shrink-0 border-t border-[#30363d] bg-[#0a0c10] transition-all duration-200"
-        style={{ height: logCollapsed ? 32 : 180 }}>
+      <div className="shrink-0 border-t border-[#30363d] bg-[#0a0c10]"
+        style={{ height: logCollapsed ? 32 : logHeight }}>
+        {/* Drag handle */}
+        {!logCollapsed && (
+          <div
+            className="h-1 w-full cursor-ns-resize flex items-center justify-center group hover:bg-blue-500/20 transition-colors"
+            onMouseDown={logDragStart}
+          >
+            <div className="w-8 h-0.5 rounded-full bg-zinc-700 group-hover:bg-blue-500/60 transition-colors" />
+          </div>
+        )}
         <div className="flex items-center px-3 py-1.5 border-b border-[#21262d] cursor-pointer select-none"
           onClick={() => setLogCollapsed(v => !v)}>
           <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider flex-1">
@@ -257,7 +276,7 @@ export default function ProjectsTab() {
           <span className="text-zinc-600 text-xs">{logCollapsed ? '▲' : '▼'}</span>
         </div>
         {!logCollapsed && (
-          <div ref={logContainerRef} className="h-[calc(100%-32px)] overflow-y-auto p-2 mono text-xs space-y-0.5">
+          <div ref={logContainerRef} className="h-[calc(100%-36px)] overflow-y-auto p-2 mono text-xs space-y-0.5">
             {logs.length === 0 && <div className="text-zinc-700 italic">No git activity yet.</div>}
             {logs.map(l => (
               <div key={l.id} className={`flex gap-2 ${levelColor(l.level)}`}>

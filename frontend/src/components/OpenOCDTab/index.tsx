@@ -6,6 +6,7 @@ import MemoryViewer from './MemoryViewer'
 import ScriptConsole from './ScriptConsole'
 import LogViewer from './LogViewer'
 import { useWebSocket } from '../../hooks/useWebSocket'
+import { useResizable } from '../../hooks/useResizable'
 import type { OpenOCDStatus, LogEntry } from '../../types'
 
 const RIGHT_TABS = [
@@ -24,6 +25,7 @@ export default function OpenOCDTab() {
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [rightTab, setRightTab] = useState<RightTabId>('flash')
   const [logCollapsed, setLogCollapsed] = useState(false)
+  const { height: logHeight, onMouseDown: logDragStart } = useResizable(200)
 
   const addLog = useCallback((text: string, level = 'info') => {
     const ts = new Date().toLocaleTimeString('en-US', { hour12: false })
@@ -103,9 +105,18 @@ export default function OpenOCDTab() {
 
       {/* Log panel */}
       <div
-        className="shrink-0 border-t border-[#30363d] bg-[#0a0c10] transition-all duration-200"
-        style={{ height: logCollapsed ? 32 : 200 }}
+        className="shrink-0 border-t border-[#30363d] bg-[#0a0c10]"
+        style={{ height: logCollapsed ? 32 : logHeight }}
       >
+        {/* Drag handle */}
+        {!logCollapsed && (
+          <div
+            className="h-1 w-full cursor-ns-resize flex items-center justify-center group hover:bg-blue-500/20 transition-colors"
+            onMouseDown={logDragStart}
+          >
+            <div className="w-8 h-0.5 rounded-full bg-zinc-700 group-hover:bg-blue-500/60 transition-colors" />
+          </div>
+        )}
         <div className="flex items-center px-3 py-1.5 border-b border-[#21262d] cursor-pointer select-none"
           onClick={() => setLogCollapsed(v => !v)}>
           <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider flex-1">
@@ -114,7 +125,7 @@ export default function OpenOCDTab() {
           <span className="text-zinc-600 text-xs">{logCollapsed ? '▲' : '▼'}</span>
         </div>
         {!logCollapsed && (
-          <div className="h-[calc(100%-32px)]">
+          <div className="h-[calc(100%-36px)]">
             <LogViewer logs={logs} onClear={() => setLogs([])} />
           </div>
         )}
