@@ -210,17 +210,16 @@ class OpenOCDManager:
                 break
         return buf.decode("utf-8", errors="replace")
 
-    async def send_command(self, cmd: str) -> str:
+    async def send_command(self, cmd: str, timeout: float = 30.0) -> str:
         if not self.connected or not self.telnet_writer or not self.telnet_reader:
             return "ERROR: Not connected"
         async with self._command_lock:
             try:
                 self.telnet_writer.write(f"{cmd}\n".encode())
                 await self.telnet_writer.drain()
-                raw = await asyncio.wait_for(self._read_until_prompt(), timeout=30.0)
+                raw = await asyncio.wait_for(self._read_until_prompt(), timeout=timeout)
                 # Strip command echo (first line) and trailing prompt
                 lines = raw.split("\n")
-                # Remove echo of sent command
                 if lines and lines[0].strip() == cmd.strip():
                     lines = lines[1:]
                 result = "\n".join(lines).rstrip("> ").strip()
@@ -229,6 +228,7 @@ class OpenOCDManager:
                 return "ERROR: Command timed out"
             except Exception as e:
                 self.connected = False
+                await self.broadcast({"type": "status", "server": self.server_status, "connected": False})
                 return f"ERROR: {e}"
 
     # ──────────────────────────────────────────────────────────────────────────
@@ -248,8 +248,9 @@ class OpenOCDManager:
 
     async def flash_program(self, filename: str, address: str, verify: bool = True) -> str:
         verify_flag = " verify" if verify else ""
-        cmd = f"program {filename}{verify_flag} reset exit"
-        resp = await self.send_command(cmd)
+        # No "exit" — keeps OpenOCD running so the session stays alive after programming
+        cmd = f"program {filename}{verify_flag} reset"
+        resp = await self.send_command(cmd, timeout=120.0)
         await self.log(f"program -> {resp}", "info" if "error" not in resp.lower() else "error")
         return resp
 
@@ -386,8 +387,10 @@ class OpenOCDManager:
             f.write(bytes(page_data))
 
         # unlock: clears FLASH lock bit; erase: handles sector erase before write
+        # 120s timeout — large pages or slow adapters can take a while
         prog_result = await self.send_command(
-            f"flash write_image erase unlock {patch_path} 0x{start_page:08X} bin"
+            f"flash write_image erase unlock {patch_path} 0x{start_page:08X} bin",
+            timeout=120.0,
         )
         ok = "error" not in prog_result.lower()
         return {
