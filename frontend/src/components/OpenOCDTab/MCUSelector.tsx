@@ -1,6 +1,5 @@
-import { useState } from 'react'
-import { MCU_FAMILIES } from '../../data/mcuConfigs'
-import type { McuFamily, McuSeries } from '../../types'
+import { useState, useMemo } from 'react'
+import { MCU_MANUFACTURERS } from '../../data/mcuConfigs'
 
 interface Props {
   selectedConfig: string
@@ -8,24 +7,21 @@ interface Props {
 }
 
 export default function MCUSelector({ selectedConfig, onSelect }: Props) {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [search, setSearch] = useState('')
   const [customConfig, setCustomConfig] = useState('')
 
-  function toggleFamily(id: string) {
-    setExpanded(prev => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
-  }
-
-  function selectFamily(family: McuFamily) {
-    onSelect(family.config, family.name)
-  }
-
-  function selectSeries(series: McuSeries) {
-    onSelect(series.config, series.name)
-  }
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase()
+    if (!q) return MCU_MANUFACTURERS
+    return MCU_MANUFACTURERS
+      .map(mfr => ({
+        ...mfr,
+        targets: mfr.targets.filter(t =>
+          t.name.toLowerCase().includes(q) || mfr.name.toLowerCase().includes(q)
+        ),
+      }))
+      .filter(mfr => mfr.targets.length > 0)
+  }, [search])
 
   function applyCustom() {
     if (customConfig.trim()) onSelect(customConfig.trim(), 'Custom')
@@ -33,7 +29,7 @@ export default function MCUSelector({ selectedConfig, onSelect }: Props) {
 
   return (
     <div className="panel flex flex-col min-h-0">
-      <div className="panel-header">MCU Selector</div>
+      <div className="panel-header">MCU Target</div>
 
       {/* Selected config display */}
       <div className="px-3 py-2 border-b border-[#30363d]">
@@ -43,32 +39,38 @@ export default function MCUSelector({ selectedConfig, onSelect }: Props) {
         </div>
       </div>
 
-      {/* Family tree */}
-      <div className="flex-1 overflow-y-auto text-xs">
-        {MCU_FAMILIES.map(family => (
-          <div key={family.id}>
-            <div
-              className={`flex items-center gap-1 px-3 py-1.5 cursor-pointer hover:bg-[#21262d] select-none
-                ${selectedConfig === family.config ? 'text-blue-400' : 'text-zinc-300'}`}
-              onClick={() => { toggleFamily(family.id); selectFamily(family) }}
-            >
-              <span className="text-zinc-600 w-3 text-center">
-                {expanded.has(family.id) ? '▾' : '▸'}
-              </span>
-              <span className="font-medium">{family.name}</span>
+      {/* Search */}
+      <div className="px-2 py-1.5 border-b border-[#30363d]">
+        <input
+          className="input w-full text-xs"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search targets…"
+        />
+      </div>
+
+      {/* Flat list grouped by manufacturer */}
+      <div className="flex-1 overflow-y-auto text-xs min-h-0">
+        {filtered.map(mfr => (
+          <div key={mfr.name}>
+            <div className="px-3 py-1 text-zinc-600 font-semibold uppercase tracking-wider text-[10px] bg-[#0f1117] sticky top-0">
+              {mfr.name}
             </div>
-            {expanded.has(family.id) && family.series.map(s => (
-              <div
-                key={s.id}
-                className={`pl-8 pr-3 py-1 cursor-pointer hover:bg-[#21262d] select-none
-                  ${selectedConfig === s.config && selectedConfig !== family.config ? 'text-blue-400' : 'text-zinc-400'}`}
-                onClick={() => selectSeries(s)}
+            {mfr.targets.map(t => (
+              <button
+                key={t.config + t.name}
+                onClick={() => onSelect(t.config, t.name)}
+                className={`w-full text-left px-4 py-1.5 hover:bg-[#21262d] transition-colors
+                  ${selectedConfig === t.config ? 'text-blue-400 bg-blue-500/10' : 'text-zinc-300'}`}
               >
-                {s.name}
-              </div>
+                {t.name}
+              </button>
             ))}
           </div>
         ))}
+        {filtered.length === 0 && (
+          <div className="px-4 py-3 text-zinc-600 text-xs italic">No targets match "{search}"</div>
+        )}
       </div>
 
       {/* Custom config */}

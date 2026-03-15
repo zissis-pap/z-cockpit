@@ -1,4 +1,4 @@
-import type { McuFamily } from '../types'
+import type { McuManufacturer } from '../types'
 
 export const INTERFACES = [
   { id: 'stlink',     name: 'ST-Link',     config: 'interface/stlink.cfg' },
@@ -6,164 +6,153 @@ export const INTERFACES = [
   { id: 'stlink_v21', name: 'ST-Link v2.1',config: 'interface/stlink-v2-1.cfg' },
   { id: 'jlink',      name: 'J-Link',      config: 'interface/jlink.cfg' },
   { id: 'cmsis_dap',  name: 'CMSIS-DAP',   config: 'interface/cmsis-dap.cfg' },
+  { id: 'stlink_v3',  name: 'ST-Link v3',  config: 'interface/stlink-v3.cfg' },
   { id: 'ftdi',       name: 'FTDI',        config: 'interface/ftdi/ft232h-module-swd.cfg' },
 ]
 
-export const MCU_FAMILIES: McuFamily[] = [
+export const MCU_MANUFACTURERS: McuManufacturer[] = [
   {
-    id: 'stm32f0', name: 'STM32F0', config: 'target/stm32f0x.cfg',
-    series: [
-      { id: 'stm32f030', name: 'STM32F030', config: 'target/stm32f0x.cfg' },
-      { id: 'stm32f051', name: 'STM32F051', config: 'target/stm32f0x.cfg' },
-      { id: 'stm32f072', name: 'STM32F072', config: 'target/stm32f0x.cfg' },
-      { id: 'stm32f091', name: 'STM32F091', config: 'target/stm32f0x.cfg' },
+    name: 'STMicroelectronics',
+    targets: [
+      { name: 'STM32F0x',           config: 'target/stm32f0x.cfg' },
+      { name: 'STM32F1x',           config: 'target/stm32f1x.cfg' },
+      { name: 'STM32F2x',           config: 'target/stm32f2x.cfg' },
+      { name: 'STM32F3x',           config: 'target/stm32f3x.cfg' },
+      { name: 'STM32F4x',           config: 'target/stm32f4x.cfg' },
+      { name: 'STM32F7x',           config: 'target/stm32f7x.cfg' },
+      { name: 'STM32G0x',           config: 'target/stm32g0x.cfg' },
+      { name: 'STM32G4x',           config: 'target/stm32g4x.cfg' },
+      { name: 'STM32H7x',           config: 'target/stm32h7x.cfg' },
+      { name: 'STM32H7x (dual bank)',config: 'target/stm32h7x_dual_bank.cfg' },
+      { name: 'STM32L0x',           config: 'target/stm32l0.cfg' },
+      { name: 'STM32L0x (dual bank)',config: 'target/stm32l0_dual_bank.cfg' },
+      { name: 'STM32L1x',           config: 'target/stm32l1.cfg' },
+      { name: 'STM32L4x',           config: 'target/stm32l4x.cfg' },
+      { name: 'STM32L5x',           config: 'target/stm32l5x.cfg' },
+      { name: 'STM32MP15x',         config: 'target/stm32mp15x.cfg' },
+      { name: 'STM32U5x',           config: 'target/stm32u5x.cfg' },
+      { name: 'STM32WBx',           config: 'target/stm32wbx.cfg' },
+      { name: 'STM32WLx',           config: 'target/stm32wlx.cfg' },
     ],
   },
   {
-    id: 'stm32f1', name: 'STM32F1', config: 'target/stm32f1x.cfg',
-    series: [
-      { id: 'stm32f100', name: 'STM32F100', config: 'target/stm32f1x.cfg' },
-      { id: 'stm32f101', name: 'STM32F101', config: 'target/stm32f1x.cfg' },
-      { id: 'stm32f103', name: 'STM32F103', config: 'target/stm32f1x.cfg' },
-      { id: 'stm32f105', name: 'STM32F105', config: 'target/stm32f1x.cfg' },
-      { id: 'stm32f107', name: 'STM32F107', config: 'target/stm32f1x.cfg' },
+    name: 'Nordic Semiconductor',
+    targets: [
+      { name: 'nRF51x',  config: 'target/nrf51.cfg' },
+      { name: 'nRF52x',  config: 'target/nrf52.cfg' },
+      { name: 'nRF5340', config: 'target/nrf5340.cfg' },
+      { name: 'nRF9160', config: 'target/nrf9160.cfg' },
     ],
   },
   {
-    id: 'stm32f2', name: 'STM32F2', config: 'target/stm32f2x.cfg',
-    series: [
-      { id: 'stm32f205', name: 'STM32F205', config: 'target/stm32f2x.cfg' },
-      { id: 'stm32f207', name: 'STM32F207', config: 'target/stm32f2x.cfg' },
-      { id: 'stm32f215', name: 'STM32F215', config: 'target/stm32f2x.cfg' },
-      { id: 'stm32f217', name: 'STM32F217', config: 'target/stm32f2x.cfg' },
+    name: 'NXP',
+    targets: [
+      { name: 'LPC2000',   config: 'target/lpc2000.cfg' },
+      { name: 'LPC17xx',   config: 'target/lpc17xx.cfg' },
+      { name: 'LPC18xx',   config: 'target/lpc18xx.cfg' },
+      { name: 'LPC4xxx',   config: 'target/lpc4xxx.cfg' },
+      { name: 'LPC55xx',   config: 'target/lpc55xx.cfg' },
+      { name: 'i.MX RT',   config: 'target/imxrt.cfg' },
+      { name: 'Kinetis Kx',config: 'target/kx.cfg' },
+      { name: 'KE1xZ',     config: 'target/ke1xz.cfg' },
     ],
   },
   {
-    id: 'stm32f3', name: 'STM32F3', config: 'target/stm32f3x.cfg',
-    series: [
-      { id: 'stm32f301', name: 'STM32F301', config: 'target/stm32f3x.cfg' },
-      { id: 'stm32f302', name: 'STM32F302', config: 'target/stm32f3x.cfg' },
-      { id: 'stm32f303', name: 'STM32F303', config: 'target/stm32f3x.cfg' },
-      { id: 'stm32f334', name: 'STM32F334', config: 'target/stm32f3x.cfg' },
-      { id: 'stm32f373', name: 'STM32F373', config: 'target/stm32f3x.cfg' },
+    name: 'Microchip / Atmel',
+    targets: [
+      { name: 'SAM3x',    config: 'target/at91sam3ax.cfg' },
+      { name: 'SAM3n',    config: 'target/at91sam3nx.cfg' },
+      { name: 'SAM3s',    config: 'target/at91sam3sx.cfg' },
+      { name: 'SAM4L',    config: 'target/at91sam4lx.cfg' },
+      { name: 'SAM4s',    config: 'target/at91sam4sx.cfg' },
+      { name: 'SAMD/L/C', config: 'target/at91samdXX.cfg' },
+      { name: 'SAME5x',   config: 'target/atsame5x.cfg' },
+      { name: 'SAM9',     config: 'target/at91sam9.cfg' },
+      { name: 'SAMA5',    config: 'target/sama5d3.cfg' },
+      { name: 'PIC32MX',  config: 'target/pic32mx.cfg' },
+      { name: 'PIC32MZ',  config: 'target/pic32mzef.cfg' },
     ],
   },
   {
-    id: 'stm32f4', name: 'STM32F4', config: 'target/stm32f4x.cfg',
-    series: [
-      { id: 'stm32f401', name: 'STM32F401', config: 'target/stm32f4x.cfg' },
-      { id: 'stm32f405', name: 'STM32F405', config: 'target/stm32f4x.cfg' },
-      { id: 'stm32f407', name: 'STM32F407', config: 'target/stm32f4x.cfg' },
-      { id: 'stm32f411', name: 'STM32F411', config: 'target/stm32f4x.cfg' },
-      { id: 'stm32f412', name: 'STM32F412', config: 'target/stm32f4x.cfg' },
-      { id: 'stm32f413', name: 'STM32F413', config: 'target/stm32f4x.cfg' },
-      { id: 'stm32f415', name: 'STM32F415', config: 'target/stm32f4x.cfg' },
-      { id: 'stm32f417', name: 'STM32F417', config: 'target/stm32f4x.cfg' },
-      { id: 'stm32f427', name: 'STM32F427', config: 'target/stm32f4x.cfg' },
-      { id: 'stm32f429', name: 'STM32F429', config: 'target/stm32f4x.cfg' },
-      { id: 'stm32f437', name: 'STM32F437', config: 'target/stm32f4x.cfg' },
-      { id: 'stm32f439', name: 'STM32F439', config: 'target/stm32f4x.cfg' },
-      { id: 'stm32f446', name: 'STM32F446', config: 'target/stm32f4x.cfg' },
-      { id: 'stm32f469', name: 'STM32F469', config: 'target/stm32f4x.cfg' },
-      { id: 'stm32f479', name: 'STM32F479', config: 'target/stm32f4x.cfg' },
+    name: 'Raspberry Pi',
+    targets: [
+      { name: 'RP2040', config: 'target/rp2040.cfg' },
+      { name: 'RP2350', config: 'target/rp2350.cfg' },
     ],
   },
   {
-    id: 'stm32f7', name: 'STM32F7', config: 'target/stm32f7x.cfg',
-    series: [
-      { id: 'stm32f722', name: 'STM32F722', config: 'target/stm32f7x.cfg' },
-      { id: 'stm32f745', name: 'STM32F745', config: 'target/stm32f7x.cfg' },
-      { id: 'stm32f746', name: 'STM32F746', config: 'target/stm32f7x.cfg' },
-      { id: 'stm32f767', name: 'STM32F767', config: 'target/stm32f7x.cfg' },
-      { id: 'stm32f769', name: 'STM32F769', config: 'target/stm32f7x.cfg' },
+    name: 'Espressif',
+    targets: [
+      { name: 'ESP32',    config: 'target/esp32.cfg' },
+      { name: 'ESP32-S2', config: 'target/esp32s2.cfg' },
+      { name: 'ESP32-S3', config: 'target/esp32s3.cfg' },
+      { name: 'ESP32-C3', config: 'target/esp32c3.cfg' },
+      { name: 'ESP32-H2', config: 'target/esp32h2.cfg' },
     ],
   },
   {
-    id: 'stm32h7', name: 'STM32H7', config: 'target/stm32h7x.cfg',
-    series: [
-      { id: 'stm32h743', name: 'STM32H743', config: 'target/stm32h7x.cfg' },
-      { id: 'stm32h745', name: 'STM32H745', config: 'target/stm32h7x_dual_bank.cfg' },
-      { id: 'stm32h747', name: 'STM32H747', config: 'target/stm32h7x_dual_bank.cfg' },
-      { id: 'stm32h750', name: 'STM32H750', config: 'target/stm32h7x.cfg' },
-      { id: 'stm32h753', name: 'STM32H753', config: 'target/stm32h7x.cfg' },
+    name: 'Silicon Labs',
+    targets: [
+      { name: 'EFM32',  config: 'target/efm32.cfg' },
+      { name: 'EFR32',  config: 'target/efr32.cfg' },
+      { name: 'EZR32',  config: 'target/ezr32.cfg' },
     ],
   },
   {
-    id: 'stm32l0', name: 'STM32L0', config: 'target/stm32l0.cfg',
-    series: [
-      { id: 'stm32l010', name: 'STM32L010', config: 'target/stm32l0.cfg' },
-      { id: 'stm32l051', name: 'STM32L051', config: 'target/stm32l0.cfg' },
-      { id: 'stm32l073', name: 'STM32L073', config: 'target/stm32l0.cfg' },
+    name: 'Texas Instruments',
+    targets: [
+      { name: 'CC13xx',   config: 'target/cc13xx.cfg' },
+      { name: 'CC26xx',   config: 'target/cc26xx.cfg' },
+      { name: 'CC32xx',   config: 'target/cc32xx.cfg' },
+      { name: 'TM4C123',  config: 'target/tm4c123.cfg' },
+      { name: 'TM4C129',  config: 'target/tm4c129.cfg' },
+      { name: 'MSP432P4', config: 'target/msp432p4.cfg' },
     ],
   },
   {
-    id: 'stm32l1', name: 'STM32L1', config: 'target/stm32l1.cfg',
-    series: [
-      { id: 'stm32l151', name: 'STM32L151', config: 'target/stm32l1.cfg' },
-      { id: 'stm32l152', name: 'STM32L152', config: 'target/stm32l1.cfg' },
-      { id: 'stm32l162', name: 'STM32L162', config: 'target/stm32l1.cfg' },
+    name: 'Infineon',
+    targets: [
+      { name: 'XMC1xxx', config: 'target/xmc1xxx.cfg' },
+      { name: 'XMC4xxx', config: 'target/xmc4xxx.cfg' },
+      { name: 'PSoC 6',  config: 'target/psoc6.cfg' },
+      { name: 'PSoC 4',  config: 'target/psoc4.cfg' },
     ],
   },
   {
-    id: 'stm32l4', name: 'STM32L4', config: 'target/stm32l4x.cfg',
-    series: [
-      { id: 'stm32l432', name: 'STM32L432', config: 'target/stm32l4x.cfg' },
-      { id: 'stm32l433', name: 'STM32L433', config: 'target/stm32l4x.cfg' },
-      { id: 'stm32l452', name: 'STM32L452', config: 'target/stm32l4x.cfg' },
-      { id: 'stm32l476', name: 'STM32L476', config: 'target/stm32l4x.cfg' },
-      { id: 'stm32l496', name: 'STM32L496', config: 'target/stm32l4x.cfg' },
+    name: 'GigaDevice',
+    targets: [
+      { name: 'GD32VF103', config: 'target/gd32vf103.cfg' },
+      { name: 'GD32F1xx',  config: 'target/gd32f1x0.cfg' },
+      { name: 'GD32F3xx',  config: 'target/gd32f3x0.cfg' },
+      { name: 'GD32F4xx',  config: 'target/gd32f4xx.cfg' },
     ],
   },
   {
-    id: 'stm32l4plus', name: 'STM32L4+', config: 'target/stm32l4x.cfg',
-    series: [
-      { id: 'stm32l4r5', name: 'STM32L4R5', config: 'target/stm32l4x.cfg' },
-      { id: 'stm32l4r9', name: 'STM32L4R9', config: 'target/stm32l4x.cfg' },
-      { id: 'stm32l4s9', name: 'STM32L4S9', config: 'target/stm32l4x.cfg' },
+    name: 'Renesas',
+    targets: [
+      { name: 'RX',  config: 'target/rx.cfg' },
+      { name: 'RA',  config: 'target/ra.cfg' },
+      { name: 'RZ',  config: 'target/rz.cfg' },
     ],
   },
   {
-    id: 'stm32l5', name: 'STM32L5', config: 'target/stm32l5x.cfg',
-    series: [
-      { id: 'stm32l552', name: 'STM32L552', config: 'target/stm32l5x.cfg' },
-      { id: 'stm32l562', name: 'STM32L562', config: 'target/stm32l5x.cfg' },
+    name: 'Nuvoton',
+    targets: [
+      { name: 'NuMicro M0',  config: 'target/numicroM0.cfg' },
+      { name: 'NuMicro M23', config: 'target/numicroM23.cfg' },
+      { name: 'NuMicro M4',  config: 'target/numicroM4.cfg' },
     ],
   },
   {
-    id: 'stm32g0', name: 'STM32G0', config: 'target/stm32g0x.cfg',
-    series: [
-      { id: 'stm32g030', name: 'STM32G030', config: 'target/stm32g0x.cfg' },
-      { id: 'stm32g071', name: 'STM32G071', config: 'target/stm32g0x.cfg' },
-      { id: 'stm32g081', name: 'STM32G081', config: 'target/stm32g0x.cfg' },
-    ],
-  },
-  {
-    id: 'stm32g4', name: 'STM32G4', config: 'target/stm32g4x.cfg',
-    series: [
-      { id: 'stm32g431', name: 'STM32G431', config: 'target/stm32g4x.cfg' },
-      { id: 'stm32g474', name: 'STM32G474', config: 'target/stm32g4x.cfg' },
-      { id: 'stm32g484', name: 'STM32G484', config: 'target/stm32g4x.cfg' },
-    ],
-  },
-  {
-    id: 'stm32u5', name: 'STM32U5', config: 'target/stm32u5x.cfg',
-    series: [
-      { id: 'stm32u575', name: 'STM32U575', config: 'target/stm32u5x.cfg' },
-      { id: 'stm32u585', name: 'STM32U585', config: 'target/stm32u5x.cfg' },
-    ],
-  },
-  {
-    id: 'stm32wb', name: 'STM32WB', config: 'target/stm32wbx.cfg',
-    series: [
-      { id: 'stm32wb50', name: 'STM32WB50', config: 'target/stm32wbx.cfg' },
-      { id: 'stm32wb55', name: 'STM32WB55', config: 'target/stm32wbx.cfg' },
-    ],
-  },
-  {
-    id: 'stm32wl', name: 'STM32WL', config: 'target/stm32wlx.cfg',
-    series: [
-      { id: 'stm32wl55', name: 'STM32WL55', config: 'target/stm32wlx.cfg' },
-      { id: 'stm32wle5', name: 'STM32WLE5', config: 'target/stm32wlx.cfg' },
+    name: 'ARM / Generic',
+    targets: [
+      { name: 'Cortex-M0',  config: 'target/cortex_m.cfg' },
+      { name: 'Cortex-M3',  config: 'target/cortex_m.cfg' },
+      { name: 'Cortex-M4',  config: 'target/cortex_m.cfg' },
+      { name: 'Cortex-M7',  config: 'target/cortex_m.cfg' },
+      { name: 'Cortex-M33', config: 'target/cortex_m.cfg' },
+      { name: 'Cortex-A',   config: 'target/cortex_a.cfg' },
+      { name: 'Cortex-R',   config: 'target/cortex_r4.cfg' },
     ],
   },
 ]

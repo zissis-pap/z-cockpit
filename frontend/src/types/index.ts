@@ -16,17 +16,15 @@ export interface MemoryRow {
   words: number[]
 }
 
-export interface McuSeries {
-  id: string
+export interface McuTarget {
   name: string
   config: string
+  note?: string
 }
 
-export interface McuFamily {
-  id: string
+export interface McuManufacturer {
   name: string
-  config: string
-  series: McuSeries[]
+  targets: McuTarget[]
 }
 
 export interface SerialPort {
