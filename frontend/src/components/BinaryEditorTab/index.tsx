@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 
 const BYTES_PER_ROW = 16
-const ROWS_PER_PAGE = 512  // 8 192 bytes per page
+const ROW_HEIGHT    = 21   // px — must match actual rendered row height
+const OVERSCAN      = 20   // extra rows above/below viewport
 
 function toHex(n: number, pad = 2) {
   return n.toString(16).toUpperCase().padStart(pad, '0')
@@ -21,24 +22,17 @@ function byteClass(b: number, modified: boolean): string {
 // ── Compare helpers ────────────────────────────────────────────────────────────
 
 function cmpClassA(a: number | undefined, b: number | undefined): string {
-  if (a === undefined) return 'text-zinc-800'           // only in B
-  if (b === undefined) return 'text-orange-400'         // only in A
-  if (a !== b)         return 'text-red-400'            // differs
-  return byteClass(a, false)                            // same
+  if (a === undefined) return 'text-zinc-800'
+  if (b === undefined) return 'text-orange-400'
+  if (a !== b)         return 'text-red-400'
+  return byteClass(a, false)
 }
 
 function cmpClassB(a: number | undefined, b: number | undefined): string {
-  if (b === undefined) return 'text-zinc-800'           // only in A
-  if (a === undefined) return 'text-purple-400'         // only in B
-  if (a !== b)         return 'text-blue-400'           // differs
-  return byteClass(b, false)                            // same
-}
-
-function isDiffRow(bytesA: (number|undefined)[], bytesB: (number|undefined)[]): boolean {
-  for (let i = 0; i < BYTES_PER_ROW; i++) {
-    if (bytesA[i] !== bytesB[i]) return true
-  }
-  return false
+  if (b === undefined) return 'text-zinc-800'
+  if (a === undefined) return 'text-purple-400'
+  if (a !== b)         return 'text-blue-400'
+  return byteClass(b, false)
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -49,7 +43,6 @@ export default function BinaryEditorTab() {
   const [fileName, setFileName]   = useState('')
   const [cursor, setCursor]       = useState<number | null>(null)
   const [editBuf, setEditBuf]     = useState('')
-  const [page, setPage]           = useState(0)
   const [saved, setSaved]         = useState(true)
   const [jumpInput, setJumpInput] = useState('')
 
@@ -59,33 +52,42 @@ export default function BinaryEditorTab() {
   const [compareMode, setCompareMode] = useState(false)
   const [diffOnly, setDiffOnly]       = useState(false)
 
-  const fileInputRef    = useRef<HTMLInputElement>(null)
-  const cmpInputRef     = useRef<HTMLInputElement>(null)
-  const editorRef       = useRef<HTMLDivElement>(null)
+  // Virtual scroll — separate for editor and compare
+  const editorScrollRef  = useRef<HTMLDivElement>(null)
+  const cmpScrollRef     = useRef<HTMLDivElement>(null)
+  const [editorScroll, setEditorScroll] = useState(0)
+  const [cmpScroll,    setCmpScroll]    = useState(0)
+
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const cmpInputRef  = useRef<HTMLInputElement>(null)
 
   // ── Derived ───────────────────────────────────────────────────────────────
 
-  const totalBytes   = data?.length ?? 0
-  const cmpTotalBytes = cmpData?.length ?? 0
+  const totalBytes     = data?.length ?? 0
+  const cmpTotalBytes  = cmpData?.length ?? 0
+  const activeTotalBytes = compareMode ? Math.max(totalBytes, cmpTotalBytes) : totalBytes
+  const modified = data && original ? data.some((b, i) => b !== original[i]) : false
 
-  const activeTotalBytes = compareMode
-    ? Math.max(totalBytes, cmpTotalBytes)
-    : totalBytes
+  const diffCount = useMemo(() => {
+    if (!compareMode || !data || !cmpData) return 0
+    const len = Math.max(data.length, cmpData.length)
+    let n = 0
+    for (let i = 0; i < len; i++) if (data[i] !== cmpData[i]) n++
+    return n
+  }, [compareMode, data, cmpData])
 
-  const totalRows  = Math.ceil(activeTotalBytes / BYTES_PER_ROW)
-  const totalPages = Math.max(1, Math.ceil(totalRows / ROWS_PER_PAGE))
-  const pageStart  = page * ROWS_PER_PAGE * BYTES_PER_ROW
-  const pageEnd    = Math.min(pageStart + ROWS_PER_PAGE * BYTES_PER_ROW, activeTotalBytes)
-  const modified   = data && original ? data.some((b, i) => b !== original[i]) : false
-
-  const diffCount = compareMode && data && cmpData
-    ? (() => {
-        const len = Math.max(data.length, cmpData.length)
-        let n = 0
-        for (let i = 0; i < len; i++) if (data[i] !== cmpData[i]) n++
-        return n
-      })()
-    : 0
+  // All offsets that start diff rows — used for diffOnly virtual scroll
+  const diffRowOffsets = useMemo(() => {
+    if (!compareMode || !data || !cmpData) return []
+    const totalB = Math.max(data.length, cmpData.length)
+    const offsets: number[] = []
+    for (let off = 0; off < totalB; off += BYTES_PER_ROW) {
+      for (let i = 0; i < BYTES_PER_ROW; i++) {
+        if (data[off + i] !== cmpData[off + i]) { offsets.push(off); break }
+      }
+    }
+    return offsets
+  }, [compareMode, data, cmpData])
 
   // ── File I/O ──────────────────────────────────────────────────────────────
 
@@ -93,13 +95,10 @@ export default function BinaryEditorTab() {
     const reader = new FileReader()
     reader.onload = e => {
       const arr = new Uint8Array(e.target!.result as ArrayBuffer)
-      setData(arr)
-      setOriginal(arr.slice())
-      setFileName(file.name)
-      setCursor(null)
-      setEditBuf('')
-      setPage(0)
-      setSaved(true)
+      setData(arr); setOriginal(arr.slice()); setFileName(file.name)
+      setCursor(null); setEditBuf(''); setSaved(true)
+      setEditorScroll(0)
+      if (editorScrollRef.current) editorScrollRef.current.scrollTop = 0
     }
     reader.readAsArrayBuffer(file)
   }
@@ -109,7 +108,8 @@ export default function BinaryEditorTab() {
     reader.onload = e => {
       setCmpData(new Uint8Array(e.target!.result as ArrayBuffer))
       setCmpFileName(file.name)
-      setPage(0)
+      setCmpScroll(0)
+      if (cmpScrollRef.current) cmpScrollRef.current.scrollTop = 0
     }
     reader.readAsArrayBuffer(file)
   }
@@ -127,16 +127,13 @@ export default function BinaryEditorTab() {
 
   function closeFileA() {
     setData(null); setOriginal(null); setFileName('')
-    setCursor(null); setEditBuf(''); setPage(0); setSaved(true)
+    setCursor(null); setEditBuf(''); setSaved(true)
     exitCompare()
   }
 
   function exitCompare() {
-    setCompareMode(false)
-    setCmpData(null)
-    setCmpFileName('')
-    setDiffOnly(false)
-    setPage(0)
+    setCompareMode(false); setCmpData(null); setCmpFileName(''); setDiffOnly(false)
+    setCmpScroll(0)
   }
 
   // ── Editing ───────────────────────────────────────────────────────────────
@@ -149,12 +146,21 @@ export default function BinaryEditorTab() {
     setSaved(false)
   }
 
+  const scrollToRow = useCallback((rowIndex: number) => {
+    const el = editorScrollRef.current
+    if (!el) return
+    const y = rowIndex * ROW_HEIGHT
+    if (y < el.scrollTop + 50 || y > el.scrollTop + el.clientHeight - 50) {
+      el.scrollTop = Math.max(0, y - el.clientHeight / 2)
+    }
+  }, [])
+
   const moveCursor = useCallback((next: number) => {
     if (!data || next < 0 || next >= data.length) return
     setCursor(next)
     setEditBuf('')
-    setPage(Math.floor(next / (ROWS_PER_PAGE * BYTES_PER_ROW)))
-  }, [data])
+    scrollToRow(Math.floor(next / BYTES_PER_ROW))
+  }, [data, scrollToRow])
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (compareMode || cursor === null || !data) return
@@ -180,49 +186,49 @@ export default function BinaryEditorTab() {
     setJumpInput('')
   }
 
-  useEffect(() => { if (!compareMode) editorRef.current?.focus() }, [cursor, compareMode])
-
-  // ── Row data ──────────────────────────────────────────────────────────────
-
-  type EditorRow = { offset: number; bytes: number[] }
-  const editorRows: EditorRow[] = []
-  if (data && !compareMode) {
-    for (let off = pageStart; off < pageEnd; off += BYTES_PER_ROW) {
-      editorRows.push({ offset: off, bytes: Array.from(data.slice(off, Math.min(off + BYTES_PER_ROW, totalBytes))) })
-    }
-  }
-
-  type CmpRow = { offset: number; bytesA: (number|undefined)[]; bytesB: (number|undefined)[] }
-  const cmpRows: CmpRow[] = []
-  if (compareMode) {
-    for (let off = pageStart; off < pageEnd; off += BYTES_PER_ROW) {
-      const end = Math.min(off + BYTES_PER_ROW, activeTotalBytes)
-      const bytesA: (number|undefined)[] = Array.from({ length: end - off }, (_, i) => data?.[off + i])
-      const bytesB: (number|undefined)[] = Array.from({ length: end - off }, (_, i) => cmpData?.[off + i])
-      while (bytesA.length < BYTES_PER_ROW) bytesA.push(undefined)
-      while (bytesB.length < BYTES_PER_ROW) bytesB.push(undefined)
-      cmpRows.push({ offset: off, bytesA, bytesB })
-    }
-  }
-
-  const visibleCmpRows = diffOnly ? cmpRows.filter(r => isDiffRow(r.bytesA, r.bytesB)) : cmpRows
+  useEffect(() => {
+    if (!compareMode) editorScrollRef.current?.focus()
+  }, [cursor, compareMode])
 
   function cellClick(abs: number) {
     if (compareMode) return
-    setCursor(abs); setEditBuf(''); editorRef.current?.focus()
+    setCursor(abs); setEditBuf(''); editorScrollRef.current?.focus()
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Virtual scroll windows ─────────────────────────────────────────────────
 
-  const pagination = (
-    <div className="flex items-center gap-3 px-3 py-2 border-t border-[#21262d] text-xs text-zinc-500 select-none bg-[#161b22]">
-      <button className="btn-ghost py-0.5 px-2.5" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>← Prev</button>
-      <span className="mono flex-1 text-center">
-        Page {page + 1} / {totalPages} &nbsp;·&nbsp; {toHex(pageStart, 8)}–{toHex(pageEnd - 1, 8)}
-      </span>
-      <button className="btn-ghost py-0.5 px-2.5" onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page === totalPages - 1}>Next →</button>
-    </div>
-  )
+  function virtualWindow(
+    scrollTop: number,
+    totalRowCount: number,
+    containerRef: React.RefObject<HTMLDivElement | null>,
+  ) {
+    const vh = containerRef.current?.clientHeight ?? 600
+    const start = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN)
+    const end   = Math.min(totalRowCount, Math.ceil((scrollTop + vh) / ROW_HEIGHT) + OVERSCAN)
+    return {
+      start, end,
+      spacerTop:    start * ROW_HEIGHT,
+      spacerBottom: Math.max(0, (totalRowCount - end) * ROW_HEIGHT),
+    }
+  }
+
+  // Editor window
+  const editorTotalRows = Math.ceil(totalBytes / BYTES_PER_ROW)
+  const editorWin = virtualWindow(editorScroll, editorTotalRows, editorScrollRef)
+
+  // Compare window — virtualise over filtered or full row list
+  const cmpDisplayOffsets = useMemo(() => {
+    if (!compareMode) return []
+    if (diffOnly) return diffRowOffsets
+    const offsets: number[] = []
+    for (let off = 0; off < activeTotalBytes; off += BYTES_PER_ROW) offsets.push(off)
+    return offsets
+  }, [compareMode, diffOnly, diffRowOffsets, activeTotalBytes])
+
+  const cmpWin = virtualWindow(cmpScroll, cmpDisplayOffsets.length, cmpScrollRef)
+  const CMP_COL_SPAN = 40
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -246,7 +252,6 @@ export default function BinaryEditorTab() {
 
         {data && compareMode && (
           <>
-            {/* File A label */}
             <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-sm bg-red-500 shrink-0" />
               <span className="text-xs text-zinc-300 mono truncate max-w-[14ch]" title={fileName}>{fileName}</span>
@@ -255,7 +260,6 @@ export default function BinaryEditorTab() {
 
             <span className="text-zinc-700">vs</span>
 
-            {/* File B label / picker */}
             {cmpData ? (
               <span className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-sm bg-blue-500 shrink-0" />
@@ -270,17 +274,15 @@ export default function BinaryEditorTab() {
               </button>
             )}
 
-            {/* Diff stats */}
             {cmpData && (
               <span className={`text-xs font-medium mono ${diffCount === 0 ? 'text-green-400' : 'text-red-400'}`}>
                 {diffCount === 0 ? '✓ identical' : `${diffCount.toLocaleString()} bytes differ`}
               </span>
             )}
 
-            {/* Diff-only filter */}
             {cmpData && (
               <label className="flex items-center gap-1.5 text-xs text-zinc-400 cursor-pointer select-none">
-                <input type="checkbox" checked={diffOnly} onChange={e => setDiffOnly(e.target.checked)} className="accent-blue-500" />
+                <input type="checkbox" checked={diffOnly} onChange={e => { setDiffOnly(e.target.checked); setCmpScroll(0); if (cmpScrollRef.current) cmpScrollRef.current.scrollTop = 0 }} className="accent-blue-500" />
                 Diffs only
               </label>
             )}
@@ -363,12 +365,15 @@ export default function BinaryEditorTab() {
               </div>
             </div>
           ) : (
-            <div className="flex-1 overflow-auto outline-none">
+            <div
+              ref={cmpScrollRef}
+              className="flex-1 overflow-auto outline-none"
+              onScroll={e => setCmpScroll(e.currentTarget.scrollTop)}
+            >
               <table className="mono text-xs border-collapse" style={{ minWidth: 'max-content' }}>
                 <thead className="sticky top-0 z-10 bg-[#161b22] border-b border-[#30363d]">
                   <tr>
                     <th className="px-3 py-1.5 text-left text-blue-500/70 font-normal w-28">Offset</th>
-                    {/* File A header */}
                     {Array.from({ length: 8 }, (_, i) => (
                       <th key={`a${i}`} className="px-0 py-1.5 text-center text-red-500/50 font-normal w-7">{toHex(i, 2)}</th>
                     ))}
@@ -377,9 +382,7 @@ export default function BinaryEditorTab() {
                       <th key={`a${i+8}`} className="px-0 py-1.5 text-center text-red-500/50 font-normal w-7">{toHex(i + 8, 2)}</th>
                     ))}
                     <th className="px-2 py-1.5 text-red-500/40 font-normal text-left">ASCII A</th>
-                    {/* Separator */}
                     <th className="px-3 py-1.5" />
-                    {/* File B header */}
                     {Array.from({ length: 8 }, (_, i) => (
                       <th key={`b${i}`} className="px-0 py-1.5 text-center text-blue-500/50 font-normal w-7">{toHex(i, 2)}</th>
                     ))}
@@ -391,19 +394,25 @@ export default function BinaryEditorTab() {
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleCmpRows.map(({ offset, bytesA, bytesB }) => {
-                    const hasDiff = isDiffRow(bytesA, bytesB)
+                  {cmpWin.spacerTop > 0 && (
+                    <tr><td colSpan={CMP_COL_SPAN} style={{ height: cmpWin.spacerTop, padding: 0 }} /></tr>
+                  )}
+                  {cmpDisplayOffsets.slice(cmpWin.start, cmpWin.end).map(offset => {
+                    const end = Math.min(offset + BYTES_PER_ROW, activeTotalBytes)
+                    const bytesA: (number|undefined)[] = Array.from({ length: end - offset }, (_, i) => data?.[offset + i])
+                    const bytesB: (number|undefined)[] = Array.from({ length: end - offset }, (_, i) => cmpData?.[offset + i])
+                    while (bytesA.length < BYTES_PER_ROW) bytesA.push(undefined)
+                    while (bytesB.length < BYTES_PER_ROW) bytesB.push(undefined)
+                    const hasDiff = bytesA.some((a, i) => a !== bytesB[i])
                     return (
-                      <tr key={offset} className={`border-b border-[#21262d]/30 ${hasDiff ? 'bg-[#0f0e0a]' : 'hover:bg-[#0f1117]'}`}>
-                        <td className={`px-3 py-0.5 whitespace-nowrap select-none ${hasDiff ? 'text-amber-500/70' : 'text-blue-400'}`}>
+                      <tr key={offset} style={{ height: ROW_HEIGHT }} className={`border-b border-[#21262d]/30 ${hasDiff ? 'bg-[#0f0e0a]' : 'hover:bg-[#0f1117]'}`}>
+                        <td className={`px-3 whitespace-nowrap select-none ${hasDiff ? 'text-amber-500/70' : 'text-blue-400'}`}>
                           {toHex(offset, 8)}
                         </td>
-
-                        {/* File A first 8 */}
                         {Array.from({ length: 8 }, (_, i) => {
                           const a = bytesA[i]; const b = bytesB[i]
                           return (
-                            <td key={`a${i}`} className="px-0 py-0.5 text-center select-none">
+                            <td key={`a${i}`} className="px-0 text-center select-none">
                               {a !== undefined
                                 ? <span className={`inline-block w-6 rounded ${cmpClassA(a, b)}`}>{toHex(a)}</span>
                                 : <span className="inline-block w-6 text-zinc-800">──</span>}
@@ -411,20 +420,17 @@ export default function BinaryEditorTab() {
                           )
                         })}
                         <td className="border-r border-[#30363d] w-2" />
-                        {/* File A second 8 */}
                         {Array.from({ length: 8 }, (_, i) => {
                           const col = i + 8; const a = bytesA[col]; const b = bytesB[col]
                           return (
-                            <td key={`a${col}`} className="px-0 py-0.5 text-center select-none">
+                            <td key={`a${col}`} className="px-0 text-center select-none">
                               {a !== undefined
                                 ? <span className={`inline-block w-6 rounded ${cmpClassA(a, b)}`}>{toHex(a)}</span>
                                 : <span className="inline-block w-6 text-zinc-800">──</span>}
                             </td>
                           )
                         })}
-
-                        {/* ASCII A */}
-                        <td className="px-2 py-0.5 whitespace-pre select-none">
+                        <td className="px-2 whitespace-pre select-none">
                           {bytesA.slice(0, 8).map((a, i) => {
                             const b = bytesB[i]
                             const cls = a === undefined ? 'text-zinc-800' : a !== b ? 'text-red-400' : 'text-green-500/60'
@@ -437,15 +443,11 @@ export default function BinaryEditorTab() {
                             return <span key={i+8} className={cls}>{a !== undefined ? (isPrintable(a) ? String.fromCharCode(a) : '·') : ' '}</span>
                           })}
                         </td>
-
-                        {/* Column separator */}
                         <td className="px-3 border-l-2 border-[#30363d]" />
-
-                        {/* File B first 8 */}
                         {Array.from({ length: 8 }, (_, i) => {
                           const a = bytesA[i]; const b = bytesB[i]
                           return (
-                            <td key={`b${i}`} className="px-0 py-0.5 text-center select-none">
+                            <td key={`b${i}`} className="px-0 text-center select-none">
                               {b !== undefined
                                 ? <span className={`inline-block w-6 rounded ${cmpClassB(a, b)}`}>{toHex(b)}</span>
                                 : <span className="inline-block w-6 text-zinc-800">──</span>}
@@ -453,20 +455,17 @@ export default function BinaryEditorTab() {
                           )
                         })}
                         <td className="border-r border-[#30363d] w-2" />
-                        {/* File B second 8 */}
                         {Array.from({ length: 8 }, (_, i) => {
                           const col = i + 8; const a = bytesA[col]; const b = bytesB[col]
                           return (
-                            <td key={`b${col}`} className="px-0 py-0.5 text-center select-none">
+                            <td key={`b${col}`} className="px-0 text-center select-none">
                               {b !== undefined
                                 ? <span className={`inline-block w-6 rounded ${cmpClassB(a, b)}`}>{toHex(b)}</span>
                                 : <span className="inline-block w-6 text-zinc-800">──</span>}
                             </td>
                           )
                         })}
-
-                        {/* ASCII B */}
-                        <td className="px-2 py-0.5 whitespace-pre select-none">
+                        <td className="px-2 whitespace-pre select-none">
                           {bytesB.slice(0, 8).map((b, i) => {
                             const a = bytesA[i]
                             const cls = b === undefined ? 'text-zinc-800' : a !== b ? 'text-blue-400' : 'text-green-500/60'
@@ -482,10 +481,11 @@ export default function BinaryEditorTab() {
                       </tr>
                     )
                   })}
+                  {cmpWin.spacerBottom > 0 && (
+                    <tr><td colSpan={CMP_COL_SPAN} style={{ height: cmpWin.spacerBottom, padding: 0 }} /></tr>
+                  )}
                 </tbody>
               </table>
-
-              {totalPages > 1 && pagination}
             </div>
           )}
 
@@ -509,101 +509,106 @@ export default function BinaryEditorTab() {
         /* ── Editor view ── */
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
           <div
-            ref={editorRef}
+            ref={editorScrollRef}
             className="flex-1 overflow-auto outline-none"
             tabIndex={0}
             onKeyDown={handleKeyDown}
+            onScroll={e => setEditorScroll(e.currentTarget.scrollTop)}
           >
             <table className="mono text-xs w-full border-collapse">
               <thead className="sticky top-0 z-10 bg-[#161b22] border-b border-[#30363d]">
                 <tr>
                   <th className="px-3 py-1.5 text-left text-blue-500/70 font-normal w-28">Offset</th>
                   {Array.from({ length: 8 }, (_, i) => (
-                    <th key={i} className="px-0 py-1.5 text-center text-zinc-600 font-normal w-7">
-                      {toHex(i, 2)}
-                    </th>
+                    <th key={i} className="px-0 py-1.5 text-center text-zinc-600 font-normal w-7">{toHex(i, 2)}</th>
                   ))}
                   <th className="px-2 py-1.5 text-zinc-700 font-normal w-4" />
                   {Array.from({ length: 8 }, (_, i) => (
-                    <th key={i + 8} className="px-0 py-1.5 text-center text-zinc-600 font-normal w-7">
-                      {toHex(i + 8, 2)}
-                    </th>
+                    <th key={i + 8} className="px-0 py-1.5 text-center text-zinc-600 font-normal w-7">{toHex(i + 8, 2)}</th>
                   ))}
                   <th className="px-3 py-1.5 text-left text-green-600/70 font-normal">ASCII</th>
                 </tr>
               </thead>
               <tbody>
-                {editorRows.map(({ offset, bytes }) => (
-                  <tr key={offset} className="hover:bg-[#0f1117] border-b border-[#21262d]/30">
-                    <td className="px-3 py-0.5 text-blue-400 whitespace-nowrap select-none">
-                      {toHex(offset, 8)}
-                    </td>
-                    {Array.from({ length: 8 }, (_, i) => {
-                      const abs = offset + i; const b = bytes[i]
-                      const isCursor = abs === cursor
-                      const isModified = original ? b !== original[abs] : false
-                      return b !== undefined ? (
-                        <td key={i} className="px-0 py-0.5 text-center select-none">
-                          <span
-                            className={`inline-block w-6 rounded cursor-pointer transition-colors ${
-                              isCursor ? 'bg-blue-600 text-white'
-                              : isModified ? 'bg-amber-500/10 ' + byteClass(b, true)
-                              : byteClass(b, false) + ' hover:bg-[#21262d]'
-                            }`}
-                            onClick={() => cellClick(abs)}
-                          >
-                            {isCursor && editBuf ? editBuf + '_' : toHex(b)}
-                          </span>
-                        </td>
-                      ) : <td key={i} />
-                    })}
-                    <td className="border-r border-[#30363d] w-2" />
-                    {Array.from({ length: 8 }, (_, i) => {
-                      const col = i + 8; const abs = offset + col; const b = bytes[col]
-                      const isCursor = abs === cursor
-                      const isModified = original ? b !== original[abs] : false
-                      return b !== undefined ? (
-                        <td key={col} className="px-0 py-0.5 text-center select-none">
-                          <span
-                            className={`inline-block w-6 rounded cursor-pointer transition-colors ${
-                              isCursor ? 'bg-blue-600 text-white'
-                              : isModified ? 'bg-amber-500/10 ' + byteClass(b, true)
-                              : byteClass(b, false) + ' hover:bg-[#21262d]'
-                            }`}
-                            onClick={() => cellClick(abs)}
-                          >
-                            {isCursor && editBuf ? editBuf + '_' : toHex(b)}
-                          </span>
-                        </td>
-                      ) : <td key={col} />
-                    })}
-                    <td className="px-3 py-0.5 text-green-500/80 whitespace-pre select-none tracking-wider">
-                      {bytes.slice(0, 8).map((b, i) => {
-                        const abs = offset + i
-                        return (
-                          <span key={i} className={`cursor-pointer ${abs === cursor ? 'bg-blue-600 text-white rounded' : 'hover:text-green-300'}`}
-                            onClick={() => cellClick(abs)}>
-                            {isPrintable(b) ? String.fromCharCode(b) : '·'}
-                          </span>
-                        )
+                {editorWin.spacerTop > 0 && (
+                  <tr><td colSpan={20} style={{ height: editorWin.spacerTop, padding: 0 }} /></tr>
+                )}
+                {data && Array.from({ length: editorWin.end - editorWin.start }, (_, idx) => {
+                  const offset = (editorWin.start + idx) * BYTES_PER_ROW
+                  const bytes = Array.from(data.slice(offset, Math.min(offset + BYTES_PER_ROW, totalBytes)))
+                  return (
+                    <tr key={offset} style={{ height: ROW_HEIGHT }} className="hover:bg-[#0f1117] border-b border-[#21262d]/30">
+                      <td className="px-3 text-blue-400 whitespace-nowrap select-none">
+                        {toHex(offset, 8)}
+                      </td>
+                      {Array.from({ length: 8 }, (_, i) => {
+                        const abs = offset + i; const b = bytes[i]
+                        const isCursor = abs === cursor
+                        const isModified = original ? b !== original[abs] : false
+                        return b !== undefined ? (
+                          <td key={i} className="px-0 text-center select-none">
+                            <span
+                              className={`inline-block w-6 rounded cursor-pointer transition-colors ${
+                                isCursor ? 'bg-blue-600 text-white'
+                                : isModified ? 'bg-amber-500/10 ' + byteClass(b, true)
+                                : byteClass(b, false) + ' hover:bg-[#21262d]'
+                              }`}
+                              onClick={() => cellClick(abs)}
+                            >
+                              {isCursor && editBuf ? editBuf + '_' : toHex(b)}
+                            </span>
+                          </td>
+                        ) : <td key={i} />
                       })}
-                      <span className="text-zinc-700 mx-0.5">│</span>
-                      {bytes.slice(8).map((b, i) => {
-                        const abs = offset + 8 + i
-                        return (
-                          <span key={i + 8} className={`cursor-pointer ${abs === cursor ? 'bg-blue-600 text-white rounded' : 'hover:text-green-300'}`}
-                            onClick={() => cellClick(abs)}>
-                            {isPrintable(b) ? String.fromCharCode(b) : '·'}
-                          </span>
-                        )
+                      <td className="border-r border-[#30363d] w-2" />
+                      {Array.from({ length: 8 }, (_, i) => {
+                        const col = i + 8; const abs = offset + col; const b = bytes[col]
+                        const isCursor = abs === cursor
+                        const isModified = original ? b !== original[abs] : false
+                        return b !== undefined ? (
+                          <td key={col} className="px-0 text-center select-none">
+                            <span
+                              className={`inline-block w-6 rounded cursor-pointer transition-colors ${
+                                isCursor ? 'bg-blue-600 text-white'
+                                : isModified ? 'bg-amber-500/10 ' + byteClass(b, true)
+                                : byteClass(b, false) + ' hover:bg-[#21262d]'
+                              }`}
+                              onClick={() => cellClick(abs)}
+                            >
+                              {isCursor && editBuf ? editBuf + '_' : toHex(b)}
+                            </span>
+                          </td>
+                        ) : <td key={col} />
                       })}
-                    </td>
-                  </tr>
-                ))}
+                      <td className="px-3 text-green-500/80 whitespace-pre select-none tracking-wider">
+                        {bytes.slice(0, 8).map((b, i) => {
+                          const abs = offset + i
+                          return (
+                            <span key={i} className={`cursor-pointer ${abs === cursor ? 'bg-blue-600 text-white rounded' : 'hover:text-green-300'}`}
+                              onClick={() => cellClick(abs)}>
+                              {isPrintable(b) ? String.fromCharCode(b) : '·'}
+                            </span>
+                          )
+                        })}
+                        <span className="text-zinc-700 mx-0.5">│</span>
+                        {bytes.slice(8).map((b, i) => {
+                          const abs = offset + 8 + i
+                          return (
+                            <span key={i + 8} className={`cursor-pointer ${abs === cursor ? 'bg-blue-600 text-white rounded' : 'hover:text-green-300'}`}
+                              onClick={() => cellClick(abs)}>
+                              {isPrintable(b) ? String.fromCharCode(b) : '·'}
+                            </span>
+                          )
+                        })}
+                      </td>
+                    </tr>
+                  )
+                })}
+                {editorWin.spacerBottom > 0 && (
+                  <tr><td colSpan={20} style={{ height: editorWin.spacerBottom, padding: 0 }} /></tr>
+                )}
               </tbody>
             </table>
-
-            {totalPages > 1 && pagination}
           </div>
 
           {/* Status bar */}
