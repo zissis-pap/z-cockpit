@@ -65,7 +65,7 @@ export interface Account {
   clone_base_path: string
 }
 
-export type RepoStatus = 'not_cloned' | 'clean' | 'dirty' | 'behind' | 'diverged' | 'unknown'
+export type RepoStatus = 'not_cloned' | 'clean' | 'dirty' | 'behind' | 'ahead' | 'diverged' | 'unknown'
 
 export interface GitRepo {
   name: string
@@ -80,6 +80,7 @@ export interface GitRepo {
   stargazers_count: number
   status: RepoStatus
   local_path: string
+  ahead?: number
   behind?: number
   platform: Platform
   account_id: string

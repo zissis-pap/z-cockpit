@@ -89,6 +89,7 @@ class ReposManager:
         has_changes = bool(stdout.strip()) if rc == 0 else False
 
         # Ahead/behind vs upstream (uses cached remote info, no network)
+        ahead = 0
         behind = 0
         rc2, out2, _ = await self._run(
             ['git', 'rev-list', '--count', '--left-right', 'HEAD...@{u}'],
@@ -97,6 +98,7 @@ class ReposManager:
         if rc2 == 0 and out2.strip():
             parts = out2.strip().split()
             if len(parts) == 2:
+                ahead = int(parts[0])
                 behind = int(parts[1])
 
         if has_changes and behind > 0:
@@ -105,10 +107,12 @@ class ReposManager:
             status = 'dirty'
         elif behind > 0:
             status = 'behind'
+        elif ahead > 0:
+            status = 'ahead'
         else:
             status = 'clean'
 
-        return {'status': status, 'local_path': str(repo_path), 'behind': behind}
+        return {'status': status, 'local_path': str(repo_path), 'ahead': ahead, 'behind': behind}
 
     def get_changed_files(self, account_id: str, repo_name: str) -> list[dict]:
         try:

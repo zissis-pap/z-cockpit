@@ -16,6 +16,7 @@ function repoKey(repo: GitRepo) { return `${repo.account_id}/${repo.name}` }
 const STATUS_DOT: Record<RepoStatus, string> = {
   clean:     'status-dot-green',
   dirty:     'status-dot-amber',
+  ahead:     'status-dot-amber',
   behind:    'status-dot-red',
   diverged:  'status-dot-red',
   not_cloned:'status-dot bg-zinc-700',
@@ -25,6 +26,7 @@ const STATUS_DOT: Record<RepoStatus, string> = {
 const STATUS_LABEL: Record<RepoStatus, string> = {
   clean:     'Up to date',
   dirty:     'Local changes',
+  ahead:     'Ahead of remote',
   behind:    'Pull needed',
   diverged:  'Changes + pull needed',
   not_cloned:'Not cloned',
@@ -34,6 +36,7 @@ const STATUS_LABEL: Record<RepoStatus, string> = {
 const STATUS_COLOR: Record<RepoStatus, string> = {
   clean:     'text-green-400',
   dirty:     'text-amber-400',
+  ahead:     'text-blue-400',
   behind:    'text-red-400',
   diverged:  'text-red-400',
   not_cloned:'text-zinc-500',
@@ -95,6 +98,7 @@ export default function RepoCard({ repo, busy, onOpen, onAction, onDelete, onSta
     <div className={`panel transition-colors duration-150 ${
       s === 'dirty' || s === 'diverged' ? 'border-amber-500/20' :
       s === 'behind' ? 'border-red-500/20' :
+      s === 'ahead' ? 'border-blue-500/20' :
       s === 'clean' ? 'border-green-500/10' : ''
     }`}>
       <div className="p-3">
@@ -128,6 +132,7 @@ export default function RepoCard({ repo, busy, onOpen, onAction, onDelete, onSta
             )}
             <div className={`text-xs mt-0.5 ${STATUS_COLOR[s]}`}>
               {STATUS_LABEL[s]}
+              {repo.ahead  ? ` (${repo.ahead} commit${repo.ahead !== 1 ? 's' : ''} ahead)` : ''}
               {repo.behind ? ` (${repo.behind} commit${repo.behind !== 1 ? 's' : ''} behind)` : ''}
               <span className="text-zinc-700 ml-2">{timeAgo(repo.updated_at)}</span>
             </div>
@@ -159,6 +164,13 @@ export default function RepoCard({ repo, busy, onOpen, onAction, onDelete, onSta
                 onClick={() => onAction(repo, 'pull')}
                 disabled={busy}>
                 {busy ? '…' : 'Pull'}
+              </button>
+            )}
+            {s === 'ahead' && (
+              <button className="btn-ghost text-xs py-1 px-2.5 border-blue-600/30 text-blue-400"
+                onClick={() => setShowCommit(v => !v)}
+                disabled={busy}>
+                {busy ? '…' : 'Push'}
               </button>
             )}
             {(s === 'dirty' || s === 'diverged' || s === 'clean') && (
