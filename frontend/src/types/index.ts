@@ -52,3 +52,28 @@ export interface ApiResponse<T = unknown> {
   result?: string
   data?: T
 }
+
+export interface AppSettings {
+  github_username: string
+  github_token: string
+  clone_base_path: string
+}
+
+export type RepoStatus = 'not_cloned' | 'clean' | 'dirty' | 'behind' | 'diverged' | 'unknown'
+
+export interface GitHubRepo {
+  name: string
+  full_name: string
+  description: string
+  html_url: string
+  clone_url: string
+  private: boolean
+  fork: boolean
+  language: string
+  updated_at: string
+  stargazers_count: number
+  status: RepoStatus
+  local_path: string
+  has_changes?: boolean
+  behind?: number
+}

@@ -2,7 +2,7 @@
 Z-Cockpit backend entry point.
 Serves the React frontend from /backend/static and the API on /api/.
 """
-import os
+import json
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +11,8 @@ from fastapi.responses import FileResponse
 
 from backend.routers.openocd import router as openocd_router, ws_router as openocd_ws
 from backend.routers.serial_port import router as serial_router, ws_router as serial_ws
+from backend.routers.settings import router as settings_router
+from backend.routers.projects import router as projects_router, ws_router as projects_ws
 
 app = FastAPI(title="Z-Cockpit", version="0.1.0")
 
@@ -21,11 +23,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+VERSION_FILE = Path(__file__).parent.parent / "version.json"
+
+@app.get("/api/version")
+async def get_version():
+    try:
+        data = json.loads(VERSION_FILE.read_text())
+        return {"version": data.get("version", "0.000")}
+    except Exception:
+        return {"version": "0.000"}
+
 # API routers
 app.include_router(openocd_router)
 app.include_router(openocd_ws)
 app.include_router(serial_router)
 app.include_router(serial_ws)
+app.include_router(settings_router)
+app.include_router(projects_router)
+app.include_router(projects_ws)
 
 # Serve built React frontend (production mode)
 STATIC_DIR = Path(__file__).parent / "static"

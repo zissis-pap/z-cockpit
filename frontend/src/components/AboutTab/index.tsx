@@ -1,4 +1,4 @@
-declare const __APP_VERSION__: string
+import { useState, useEffect } from 'react'
 
 const STACK = [
   { name: 'FastAPI',      desc: 'Async Python backend & WebSocket server' },
@@ -12,7 +12,7 @@ const STACK = [
 
 const FEATURES = [
   'OpenOCD server control with async telnet command interface',
-  'STM32 MCU selector (F0 → WL, 17 families)',
+  'MCU target selector (ST, Nordic, NXP, Microchip, Espressif, TI, and more)',
   'Flash programming, verification, erase, and memory dump',
   'Live hex memory viewer with auto-refresh',
   'Interactive TCL console + script editor',
@@ -21,7 +21,14 @@ const FEATURES = [
 ]
 
 export default function AboutTab() {
-  const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.000'
+  const [version, setVersion] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/api/version')
+      .then(r => r.json())
+      .then(d => setVersion(d.version))
+      .catch(() => setVersion('—'))
+  }, [])
 
   return (
     <div className="flex flex-col h-full p-6 overflow-y-auto">
@@ -40,7 +47,11 @@ export default function AboutTab() {
             <h1 className="text-xl font-bold text-zinc-100 tracking-tight">Z-Cockpit</h1>
             <div className="flex items-center gap-2 mt-1">
               <span className="mono text-sm text-blue-400 bg-blue-400/10 px-2 py-0.5 rounded border border-blue-400/20">
-                v{version}
+                {version === null ? (
+                  <span className="text-zinc-600">loading…</span>
+                ) : (
+                  `v${version}`
+                )}
               </span>
               <span className="text-xs text-zinc-500">Embedded developer toolkit</span>
             </div>
@@ -83,9 +94,8 @@ export default function AboutTab() {
           </div>
         </div>
 
-        {/* Version note */}
         <div className="text-center text-xs text-zinc-700 pb-2">
-          Version increments automatically with each git commit.
+          Version read live from server — increments automatically with each git commit.
         </div>
       </div>
     </div>

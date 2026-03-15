@@ -48,6 +48,26 @@ export const openocd = {
   },
 }
 
+// ── Settings ─────────────────────────────────────────────────────────────────
+
+export const settings = {
+  get:            () => req<{ ok: boolean; settings: import('../types').AppSettings }>('GET', '/settings'),
+  save:           (body: object) => req<{ ok: boolean }>('POST', '/settings', body),
+  testConnection: () => req<{ ok: boolean; login?: string; name?: string; error?: string }>('POST', '/settings/test-connection'),
+}
+
+// ── Projects ──────────────────────────────────────────────────────────────────
+
+export const projects = {
+  repos:   () => req<{ ok: boolean; error?: string; repos: import('../types').GitHubRepo[] }>('GET', '/projects/repos'),
+  status:  (name: string) => req<{ ok: boolean; status: import('../types').RepoStatus }>('GET', `/projects/repos/${name}/status`),
+  changes: (name: string) => req<{ ok: boolean; files: Array<{ code: string; file: string }> }>('GET', `/projects/repos/${name}/changes`),
+  clone:   (name: string, clone_url: string) => req<{ ok: boolean }>('POST', `/projects/repos/${name}/clone?clone_url=${encodeURIComponent(clone_url)}`),
+  pull:    (name: string) => req<{ ok: boolean }>('POST', `/projects/repos/${name}/pull`),
+  fetch:   (name: string) => req<{ ok: boolean }>('POST', `/projects/repos/${name}/fetch`),
+  commit:  (name: string, message: string) => req<{ ok: boolean }>('POST', `/projects/repos/${name}/commit`, { message }),
+}
+
 // ── Serial ───────────────────────────────────────────────────────────────────
 
 export const serial = {

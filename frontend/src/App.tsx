@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import OpenOCDTab from './components/OpenOCDTab'
-import SerialTab from './components/SerialTab'
+import ProjectsTab  from './components/ProjectsTab'
+import OpenOCDTab   from './components/OpenOCDTab'
+import SerialTab    from './components/SerialTab'
 import ConverterTab from './components/ConverterTab'
-import SettingsTab from './components/SettingsTab'
-import AboutTab from './components/AboutTab'
+import SettingsTab  from './components/SettingsTab'
+import AboutTab     from './components/AboutTab'
 
-// Icons (inline SVGs — no extra dep needed beyond lucide-react)
+function IconGit()      { return <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M6 9v12"/></svg> }
 function IconCpu()      { return <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/></svg> }
 function IconCable()    { return <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a1 1 0 0 1-1-1v-1a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1a1 1 0 0 1-1 1v2"/><path d="M19 15V6.5a3.5 3.5 0 0 0-7 0v11a3.5 3.5 0 0 1-7 0V9"/><path d="M7 9V7a1 1 0 0 1 1-1V4"/><path d="M5 3h4"/><path d="M21 19h-4"/></svg> }
 function IconConvert()  { return <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M7 16V4m0 0L3 8m4-4 4 4"/><path d="M17 8v12m0 0 4-4m-4 4-4-4"/></svg> }
@@ -14,6 +15,7 @@ function IconInfo()     { return <svg viewBox="0 0 24 24" className="w-5 h-5" fi
 function IconMenu()     { return <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg> }
 
 const MAIN_TABS = [
+  { id: 'projects',  label: 'Projects',         Icon: IconGit },
   { id: 'openocd',   label: 'OpenOCD',          Icon: IconCpu },
   { id: 'serial',    label: 'Serial Terminal',  Icon: IconCable },
   { id: 'converter', label: 'Converter',        Icon: IconConvert },
@@ -27,7 +29,7 @@ const BOTTOM_TABS = [
 type TabId = typeof MAIN_TABS[number]['id'] | typeof BOTTOM_TABS[number]['id']
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<TabId>('openocd')
+  const [activeTab, setActiveTab] = useState<TabId>('projects')
   const [expanded, setExpanded] = useState(true)
 
   const SIDEBAR_W = expanded ? 'w-52' : 'w-12'
@@ -54,12 +56,9 @@ export default function App() {
     <div className="flex h-screen bg-[#0a0c10] text-zinc-200 overflow-hidden">
 
       {/* Sidebar */}
-      <aside
-        className={`${SIDEBAR_W} shrink-0 flex flex-col bg-[#0f1117] border-r border-[#21262d]
-          transition-all duration-200 overflow-hidden`}
-      >
+      <aside className={`${SIDEBAR_W} shrink-0 flex flex-col bg-[#0f1117] border-r border-[#21262d] transition-all duration-200 overflow-hidden`}>
         {/* Top: hamburger + logo */}
-        <div className={`flex items-center h-12 border-b border-[#21262d] shrink-0 px-2 gap-2`}>
+        <div className="flex items-center h-12 border-b border-[#21262d] shrink-0 px-2 gap-2">
           <button
             onClick={() => setExpanded(v => !v)}
             className="p-1.5 rounded hover:bg-[#21262d] text-zinc-400 hover:text-zinc-200 transition-colors shrink-0"
@@ -68,29 +67,24 @@ export default function App() {
             <IconMenu />
           </button>
           {expanded && (
-            <span className="text-sm font-semibold text-zinc-200 tracking-tight whitespace-nowrap overflow-hidden">
-              Z-Cockpit
-            </span>
+            <span className="text-sm font-semibold text-zinc-200 tracking-tight whitespace-nowrap">Z-Cockpit</span>
           )}
         </div>
 
         {/* Main nav */}
         <nav className="flex-1 flex flex-col gap-0.5 p-2 overflow-hidden">
-          {MAIN_TABS.map(t => (
-            <NavItem key={t.id} id={t.id} label={t.label} Icon={t.Icon} />
-          ))}
+          {MAIN_TABS.map(t => <NavItem key={t.id} id={t.id} label={t.label} Icon={t.Icon} />)}
         </nav>
 
         {/* Bottom nav */}
         <div className="flex flex-col gap-0.5 p-2 border-t border-[#21262d]">
-          {BOTTOM_TABS.map(t => (
-            <NavItem key={t.id} id={t.id} label={t.label} Icon={t.Icon} />
-          ))}
+          {BOTTOM_TABS.map(t => <NavItem key={t.id} id={t.id} label={t.label} Icon={t.Icon} />)}
         </div>
       </aside>
 
       {/* Content */}
       <main className="flex-1 overflow-hidden">
+        {activeTab === 'projects'  && <ProjectsTab />}
         {activeTab === 'openocd'   && <OpenOCDTab />}
         {activeTab === 'serial'    && <SerialTab />}
         {activeTab === 'converter' && <ConverterTab />}
