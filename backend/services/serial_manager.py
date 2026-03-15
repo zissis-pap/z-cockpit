@@ -25,6 +25,8 @@ class SerialManager:
         self._stop_event = threading.Event()
         self._read_thread: Optional[threading.Thread] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._log_file: Optional[object] = None   # open file handle
+        self._log_path: str = ""
 
     # ──────────────────────────────────────────────────────────────────────────
     # WebSocket management
@@ -45,6 +47,39 @@ class SerialManager:
             except Exception:
                 dead.add(ws)
         self.ws_clients -= dead
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Logging
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def start_log(self, path: str) -> dict:
+        import os
+        path = os.path.expanduser(path)
+        os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
+        try:
+            self._log_file = open(path, "a", encoding="utf-8", buffering=1)  # line-buffered
+            self._log_path = path
+            return {"ok": True, "path": path}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def stop_log(self) -> dict:
+        if self._log_file:
+            try:
+                self._log_file.close()
+            except Exception:
+                pass
+            self._log_file = None
+        path = self._log_path
+        self._log_path = ""
+        return {"ok": True, "path": path}
+
+    def _write_log(self, line: str):
+        if self._log_file:
+            try:
+                self._log_file.write(line)
+            except Exception:
+                pass
 
     # ──────────────────────────────────────────────────────────────────────────
     # Port listing
@@ -132,6 +167,9 @@ class SerialManager:
             else:
                 raw = data.encode("utf-8", errors="replace")
             self.ser.write(raw + ending)
+            from datetime import datetime
+            ts = datetime.now().strftime("%H:%M:%S.") + f"{datetime.now().microsecond // 1000:03d}"
+            self._write_log(f"[{ts}] TX | {data}\n")
             return {"ok": True, "bytes": len(raw) + len(ending)}
         except Exception as e:
             return {"ok": False, "error": str(e)}
@@ -159,11 +197,14 @@ class SerialManager:
             self._stop_event.wait(timeout=0.01)
 
     async def _on_data(self, data: bytes):
+        from datetime import datetime
         hex_str = data.hex(" ").upper()
         try:
             text = data.decode("utf-8", errors="replace")
         except Exception:
             text = ""
+        ts = datetime.now().strftime("%H:%M:%S.") + f"{datetime.now().microsecond // 1000:03d}"
+        self._write_log(f"[{ts}] RX | {text or hex_str}\n")
         await self.broadcast({
             "type": "data",
             "hex": hex_str,

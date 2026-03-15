@@ -81,3 +81,17 @@ class SendRequest(BaseModel):
 @router.post("/send")
 async def send(req: SendRequest):
     return await serial_manager.send(req.data, req.data_type, req.line_ending)
+
+
+class LogStartRequest(BaseModel):
+    path: str
+
+
+@router.post("/log/start")
+async def log_start(req: LogStartRequest):
+    return serial_manager.start_log(req.path)
+
+
+@router.post("/log/stop")
+async def log_stop():
+    return serial_manager.stop_log()

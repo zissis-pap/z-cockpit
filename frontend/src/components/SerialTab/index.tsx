@@ -145,16 +145,11 @@ export default function SerialTab() {
   const [showTimestamps, setShowTimestamps] = useState(true)
   const [vt100, setVt100]             = useState(false)
   const [logFileName, setLogFileName]  = useState('')     // '' = not logging
-  const [fallbackName, setFallbackName] = useState(() =>
-    `serial_${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.log`
+  const [logPath, setLogPath]          = useState(() =>
+    `~/serial_${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.log`
   )
-  const supportsFilePicker = 'showSaveFilePicker' in window
   const bottomRef    = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const writerRef    = useRef<any>(null)                  // FileSystemWritableFileStream or null
-  const bufferRef    = useRef<string[]>([])               // fallback buffer
-  const logActiveRef = useRef(false)                      // mirror of logFileName !== '', readable in stale closures
 
   useEffect(() => { refreshPorts() }, [])
 
@@ -177,10 +172,6 @@ export default function SerialTab() {
     } else if (msg.type === 'data') {
       const now = new Date()
       const ts = now.toLocaleTimeString('en-US', { hour12: false }) + '.' + String(now.getMilliseconds()).padStart(3, '0')
-      if (logActiveRef.current) {
-        const line = `[${ts}] RX | ${msg.text ?? msg.hex ?? ''}\n`
-        writerRef.current ? writerRef.current.write(line) : bufferRef.current.push(line)
-      }
       setLines(prev => [...prev.slice(-5000), { id: lineSeq++, timestamp: ts, direction: 'rx', text: msg.text ?? '', hex: msg.hex ?? '' }])
     } else if (msg.type === 'error') {
       const ts = new Date().toLocaleTimeString('en-US', { hour12: false })
@@ -190,47 +181,14 @@ export default function SerialTab() {
 
   useWebSocket('/ws/serial', handleWsMessage)
 
-  async function selectLogFile() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (supportsFilePicker) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const handle = await (window as any).showSaveFilePicker({
-          suggestedName: fallbackName,
-          types: [{ description: 'Log file', accept: { 'text/plain': ['.log', '.txt'] } }],
-        })
-        const file = await handle.getFile()
-        const writer = await handle.createWritable({ keepExistingData: true })
-        await writer.seek(file.size)
-        if (writerRef.current) await writerRef.current.close()
-        writerRef.current = writer
-        logActiveRef.current = true
-        setLogFileName(handle.name)
-      } catch { /* user cancelled */ }
-    } else {
-      // Fallback: buffer in memory, download on stop
-      bufferRef.current = []
-      logActiveRef.current = true
-      setLogFileName(fallbackName)
-    }
+  async function startLog() {
+    const res = await serial.logStart(logPath)
+    if (res.ok) setLogFileName(res.path ?? logPath)
   }
 
-  async function closeLogFile() {
-    logActiveRef.current = false
-    const name = logFileName
+  async function stopLog() {
+    await serial.logStop()
     setLogFileName('')
-    if (writerRef.current) {
-      await writerRef.current.close()
-      writerRef.current = null
-    } else if (bufferRef.current.length > 0) {
-      const blob = new Blob([bufferRef.current.join('')], { type: 'text/plain' })
-      const a = document.createElement('a')
-      a.href = URL.createObjectURL(blob)
-      a.download = name
-      a.click()
-      URL.revokeObjectURL(a.href)
-      bufferRef.current = []
-    }
   }
 
   async function connect() {
@@ -242,10 +200,6 @@ export default function SerialTab() {
     if (!input.trim() || !status.connected) return
     const now = new Date()
     const ts = now.toLocaleTimeString('en-US', { hour12: false }) + '.' + String(now.getMilliseconds()).padStart(3, '0')
-    if (logActiveRef.current) {
-      const line = `[${ts}] TX | ${input}\n`
-      writerRef.current ? writerRef.current.write(line) : bufferRef.current.push(line)
-    }
     const txHex = dataType === 'hex'
       ? input.trim()
       : Array.from(input).map(c => c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')).join(' ')
@@ -386,24 +340,22 @@ export default function SerialTab() {
             {logFileName ? (
               <span className="flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shrink-0" />
-                <span className="text-xs text-zinc-400 max-w-[14ch] truncate" title={logFileName}>{logFileName}</span>
+                <span className="text-xs text-zinc-400 max-w-[18ch] truncate" title={logFileName}>{logFileName}</span>
                 <button
                   className="btn text-xs px-2 py-0.5 bg-red-700/30 border border-red-600/40 text-red-400 hover:bg-red-700/50"
-                  onClick={closeLogFile}
-                  title={supportsFilePicker ? 'Stop logging' : 'Stop logging and download'}
+                  onClick={stopLog}
                 >✕</button>
               </span>
-            ) : supportsFilePicker ? (
-              <button className="btn-ghost text-xs px-2 py-0.5" onClick={selectLogFile}>Log to file</button>
             ) : (
               <span className="flex items-center gap-1">
                 <input
-                  className="input text-xs py-0.5 w-32 mono"
-                  value={fallbackName}
-                  onChange={e => setFallbackName(e.target.value)}
-                  title="Log filename"
+                  className="input text-xs py-0.5 w-44 mono"
+                  value={logPath}
+                  onChange={e => setLogPath(e.target.value)}
+                  title="Log file path (saved on the server)"
+                  placeholder="~/serial.log"
                 />
-                <button className="btn-ghost text-xs px-2 py-0.5" onClick={selectLogFile}>Log</button>
+                <button className="btn-ghost text-xs px-2 py-0.5" onClick={startLog}>Log</button>
               </span>
             )}
             <button className="btn-ghost text-xs px-2 py-0.5" onClick={() => setLines([])}>Clear</button>

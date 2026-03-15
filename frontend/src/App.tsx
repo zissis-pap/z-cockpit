@@ -90,8 +90,8 @@ export default function App() {
         {activeTab === 'projects'  && <ProjectsTab />}
         <div className={activeTab === 'openocd' ? 'h-full' : 'hidden'}><OpenOCDTab /></div>
         <div className={activeTab === 'serial' ? 'h-full' : 'hidden'}><SerialTab /></div>
-        {activeTab === 'converter' && <ConverterTab />}
-        {activeTab === 'binary'    && <BinaryEditorTab />}
+        <div className={activeTab === 'converter' ? 'h-full' : 'hidden'}><ConverterTab /></div>
+        <div className={activeTab === 'binary' ? 'h-full' : 'hidden'}><BinaryEditorTab /></div>
         {activeTab === 'settings'  && <SettingsTab />}
         {activeTab === 'about'     && <AboutTab />}
       </main>

@@ -87,4 +87,6 @@ export const serial = {
   disconnect: ()             => req('POST', '/serial/disconnect'),
   status:     ()             => req('GET',  '/serial/status'),
   send:       (body: object) => req('POST', '/serial/send', body),
+  logStart:   (path: string) => req<{ ok: boolean; path?: string; error?: string }>('POST', '/serial/log/start', { path }),
+  logStop:    ()             => req<{ ok: boolean; path?: string }>('POST', '/serial/log/stop'),
 }
