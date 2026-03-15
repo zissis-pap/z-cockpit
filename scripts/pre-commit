@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Auto-increment version.json on every commit.
+
+ROOT="$(git rev-parse --show-toplevel)"
+VERSION_FILE="$ROOT/version.json"
+
+if [ ! -f "$VERSION_FILE" ]; then
+  printf '{"version": "0.001"}\n' > "$VERSION_FILE"
+  git add "$VERSION_FILE"
+  echo "[hook] version.json created at 0.001"
+  exit 0
+fi
+
+NEW_VERSION=$(python3 -c "
+import json
+with open('$VERSION_FILE') as f:
+    data = json.load(f)
+v = round(float(data.get('version', '0.000')) + 0.001, 3)
+print(f'{v:.3f}')
+")
+
+if [ $? -ne 0 ] || [ -z "$NEW_VERSION" ]; then
+  echo "[hook] Warning: could not increment version (python3 required)"
+  exit 0
+fi
+
+printf '{"version": "%s"}\n' "$NEW_VERSION" > "$VERSION_FILE"
+git add "$VERSION_FILE"
+echo "[hook] Version → $NEW_VERSION"

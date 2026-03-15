@@ -6,6 +6,13 @@ cd "$ROOT"
 
 echo "=== Z-Cockpit Setup ==="
 
+# ── Git hooks ────────────────────────────────────────────────────────────────
+echo ""
+echo "→ Installing git hooks"
+cp "$ROOT/scripts/pre-commit" "$ROOT/.git/hooks/pre-commit"
+chmod +x "$ROOT/.git/hooks/pre-commit"
+echo "  pre-commit hook installed"
+
 # ── Python venv ──────────────────────────────────────────────────────────────
 echo ""
 echo "→ Creating Python virtual environment at $ROOT/venv"
