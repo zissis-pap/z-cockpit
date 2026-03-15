@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import ServerControl from './ServerControl'
 import MCUSelector from './MCUSelector'
 import FlashOps from './FlashOps'
@@ -7,7 +7,7 @@ import ScriptConsole from './ScriptConsole'
 import LogViewer from './LogViewer'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { useResizable } from '../../hooks/useResizable'
-import type { OpenOCDStatus, LogEntry } from '../../types'
+import type { OpenOCDStatus, LogEntry, MemoryRow } from '../../types'
 
 const RIGHT_TABS = [
   { id: 'flash',  label: 'Flash Ops' },
@@ -24,6 +24,16 @@ export default function OpenOCDTab() {
   const [targetConfig, setTargetConfig] = useState('')
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [rightTab, setRightTab] = useState<RightTabId>('flash')
+  const [memoryRows, setMemoryRows] = useState<MemoryRow[]>([])
+  const prevConnected = useRef(false)
+
+  // Clear memory rows when board disconnects
+  useEffect(() => {
+    if (prevConnected.current && !status.connected) {
+      setMemoryRows([])
+    }
+    prevConnected.current = status.connected
+  }, [status.connected])
   const [logCollapsed, setLogCollapsed] = useState(false)
   const { height: logHeight, onMouseDown: logDragStart } = useResizable(200)
 
@@ -90,15 +100,11 @@ export default function OpenOCDTab() {
             ))}
           </div>
 
-          {/* Tab content */}
+          {/* Tab content — always mounted, shown/hidden via CSS to preserve state */}
           <div className="flex-1 overflow-y-auto min-h-0 pr-0.5">
-            {rightTab === 'flash'  && <FlashOps connected={status.connected} onLog={addLog} />}
-            {rightTab === 'memory' && <MemoryViewer connected={status.connected} onLog={addLog} />}
-            {rightTab === 'script' && (
-              <div className="flex flex-col h-full">
-                <ScriptConsole connected={status.connected} />
-              </div>
-            )}
+            <div className={rightTab === 'flash'  ? '' : 'hidden'}><FlashOps connected={status.connected} onLog={addLog} /></div>
+            <div className={rightTab === 'memory' ? '' : 'hidden'}><MemoryViewer connected={status.connected} rows={memoryRows} onRows={setMemoryRows} onLog={addLog} /></div>
+            <div className={rightTab === 'script' ? 'flex flex-col h-full' : 'hidden'}><ScriptConsole connected={status.connected} /></div>
           </div>
         </div>
       </div>

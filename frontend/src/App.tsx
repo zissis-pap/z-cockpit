@@ -2,7 +2,8 @@ import { useState } from 'react'
 import ProjectsTab  from './components/ProjectsTab'
 import OpenOCDTab   from './components/OpenOCDTab'
 import SerialTab    from './components/SerialTab'
-import ConverterTab from './components/ConverterTab'
+import ConverterTab    from './components/ConverterTab'
+import BinaryEditorTab from './components/BinaryEditorTab'
 import SettingsTab  from './components/SettingsTab'
 import AboutTab     from './components/AboutTab'
 
@@ -10,6 +11,7 @@ function IconGit()      { return <svg viewBox="0 0 24 24" className="w-5 h-5" fi
 function IconCpu()      { return <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/></svg> }
 function IconCable()    { return <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a1 1 0 0 1-1-1v-1a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1a1 1 0 0 1-1 1v2"/><path d="M19 15V6.5a3.5 3.5 0 0 0-7 0v11a3.5 3.5 0 0 1-7 0V9"/><path d="M7 9V7a1 1 0 0 1 1-1V4"/><path d="M5 3h4"/><path d="M21 19h-4"/></svg> }
 function IconConvert()  { return <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M7 16V4m0 0L3 8m4-4 4 4"/><path d="M17 8v12m0 0 4-4m-4 4-4-4"/></svg> }
+function IconBinary()   { return <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/><path d="M7 6h.01M5 6h.01"/></svg> }
 function IconSettings() { return <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M8.46 8.46a5 5 0 0 0 0 7.07"/></svg> }
 function IconInfo()     { return <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg> }
 function IconMenu()     { return <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg> }
@@ -19,6 +21,7 @@ const MAIN_TABS = [
   { id: 'openocd',   label: 'OpenOCD',          Icon: IconCpu },
   { id: 'serial',    label: 'Serial Terminal',  Icon: IconCable },
   { id: 'converter', label: 'Converter',        Icon: IconConvert },
+  { id: 'binary',    label: 'Binary Editor',   Icon: IconBinary },
 ] as const
 
 const BOTTOM_TABS = [
@@ -85,9 +88,10 @@ export default function App() {
       {/* Content */}
       <main className="flex-1 overflow-hidden">
         {activeTab === 'projects'  && <ProjectsTab />}
-        {activeTab === 'openocd'   && <OpenOCDTab />}
+        <div className={activeTab === 'openocd' ? 'h-full' : 'hidden'}><OpenOCDTab /></div>
         {activeTab === 'serial'    && <SerialTab />}
         {activeTab === 'converter' && <ConverterTab />}
+        {activeTab === 'binary'    && <BinaryEditorTab />}
         {activeTab === 'settings'  && <SettingsTab />}
         {activeTab === 'about'     && <AboutTab />}
       </main>

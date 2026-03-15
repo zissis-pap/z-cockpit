@@ -4,6 +4,8 @@ import type { MemoryRow } from '../../types'
 
 interface Props {
   connected: boolean
+  rows: MemoryRow[]
+  onRows: (rows: MemoryRow[]) => void
   onLog: (text: string, level?: string) => void
 }
 
@@ -19,10 +21,9 @@ function toAscii(b: number): string {
   return b >= 32 && b < 127 ? String.fromCharCode(b) : '.'
 }
 
-export default function MemoryViewer({ connected, onLog }: Props) {
+export default function MemoryViewer({ connected, rows, onRows, onLog }: Props) {
   const [address, setAddress] = useState('0x08000000')
   const [size, setSize] = useState(256)
-  const [rows, setRows] = useState<MemoryRow[]>([])
   const [busy, setBusy] = useState(false)
   const [autoRefresh, setAutoRefresh] = useState(false)
   const [intervalMs, setIntervalMs] = useState(2000)
@@ -33,14 +34,14 @@ export default function MemoryViewer({ connected, onLog }: Props) {
     setBusy(true)
     try {
       const res = await openocd.memory.read(address, size)
-      if (res.ok) setRows(res.rows)
+      if (res.ok) onRows(res.rows)
       else onLog('Memory read failed', 'error')
     } catch (e) {
       onLog(`Memory read error: ${e}`, 'error')
     } finally {
       setBusy(false)
     }
-  }, [connected, address, size, onLog])
+  }, [connected, address, size, onLog, onRows])
 
   function toggleAutoRefresh() {
     if (autoRefresh) {
