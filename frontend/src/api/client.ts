@@ -1,4 +1,4 @@
-import type { Account, GitRepo, RepoStatus } from '../types'
+import type { Account, GitRepo, RepoStatus, FileEntry } from '../types'
 
 const BASE = '/api'
 
@@ -70,6 +70,12 @@ export const projects = {
   pull:    (accountId: string, name: string) => req<{ ok: boolean }>('POST', `/projects/repos/${accountId}/${name}/pull`),
   fetch:   (accountId: string, name: string) => req<{ ok: boolean }>('POST', `/projects/repos/${accountId}/${name}/fetch`),
   commit:  (accountId: string, name: string, message: string) => req<{ ok: boolean }>('POST', `/projects/repos/${accountId}/${name}/commit`, { message }),
+  listFiles: (accountId: string, name: string, path = '') =>
+    req<{ ok: boolean; entries: FileEntry[] }>('GET', `/projects/repos/${accountId}/${name}/files${path ? `?path=${encodeURIComponent(path)}` : ''}`),
+  readFile:  (accountId: string, name: string, path: string) =>
+    req<{ ok: boolean; content: string }>('GET', `/projects/repos/${accountId}/${name}/file?path=${encodeURIComponent(path)}`),
+  writeFile: (accountId: string, name: string, path: string, content: string) =>
+    req<{ ok: boolean }>('PUT', `/projects/repos/${accountId}/${name}/file?path=${encodeURIComponent(path)}`, { content }),
 }
 
 // ── Serial ───────────────────────────────────────────────────────────────────

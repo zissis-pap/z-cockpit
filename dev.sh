@@ -3,6 +3,12 @@ set -e
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 
+# Stop any running uvicorn on port 8000
+if lsof -ti tcp:8000 &>/dev/null; then
+    echo "Stopping existing server on port 8000..."
+    lsof -ti tcp:8000 | xargs kill 2>/dev/null || true
+fi
+
 echo "Building frontend..."
 cd "$ROOT/frontend"
 npm run build

@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
@@ -107,3 +108,86 @@ async def commit_repo(account_id: str, repo_name: str, payload: CommitPayload):
         return {"ok": False, "error": "Commit message cannot be empty"}
     asyncio.create_task(repos_manager.commit_and_push(account_id, repo_name, payload.message))
     return {"ok": True, "message": "Commit started"}
+
+
+# ── File browser ───────────────────────────────────────────────────────────────
+
+def _repo_root(account_id: str, repo_name: str) -> Path | None:
+    acct = settings_manager.get_account_raw(account_id)
+    if not acct:
+        return None
+    return Path(acct['clone_base_path']) / repo_name
+
+
+def _safe_path(root: Path, rel: str) -> Path:
+    target = (root / rel.lstrip('/')).resolve()
+    if not str(target).startswith(str(root.resolve())):
+        raise ValueError("Path outside repository")
+    return target
+
+
+@router.get("/repos/{account_id}/{repo_name}/files")
+async def list_files(account_id: str, repo_name: str, path: str = ""):
+    root = _repo_root(account_id, repo_name)
+    if not root:
+        return {"ok": False, "error": "Account not found"}
+    if not root.exists():
+        return {"ok": False, "error": "Repository not cloned"}
+    try:
+        target = _safe_path(root, path)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    if not target.is_dir():
+        return {"ok": False, "error": "Not a directory"}
+
+    entries = []
+    for entry in sorted(target.iterdir(), key=lambda e: (e.is_file(), e.name.lower())):
+        if entry.name == '.git':
+            continue
+        rel = str(entry.relative_to(root))
+        entries.append({
+            "name": entry.name,
+            "path": rel,
+            "type": "dir" if entry.is_dir() else "file",
+            "size": entry.stat().st_size if entry.is_file() else 0,
+        })
+    return {"ok": True, "entries": entries}
+
+
+@router.get("/repos/{account_id}/{repo_name}/file")
+async def read_file(account_id: str, repo_name: str, path: str):
+    root = _repo_root(account_id, repo_name)
+    if not root:
+        return {"ok": False, "error": "Account not found"}
+    try:
+        target = _safe_path(root, path)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    if not target.is_file():
+        return {"ok": False, "error": "Not a file"}
+    try:
+        return {"ok": True, "content": target.read_text(encoding='utf-8', errors='replace')}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+class FileWriteBody(BaseModel):
+    content: str
+
+
+@router.put("/repos/{account_id}/{repo_name}/file")
+async def write_file(account_id: str, repo_name: str, path: str, body: FileWriteBody):
+    root = _repo_root(account_id, repo_name)
+    if not root:
+        return {"ok": False, "error": "Account not found"}
+    try:
+        target = _safe_path(root, path)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    if not target.is_file():
+        return {"ok": False, "error": "File not found"}
+    try:
+        target.write_text(body.content, encoding='utf-8')
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}

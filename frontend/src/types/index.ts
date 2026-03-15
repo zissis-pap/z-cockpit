@@ -89,3 +89,10 @@ export interface GitRepo {
 
 // Alias kept for compatibility with existing components
 export type GitHubRepo = GitRepo
+
+export interface FileEntry {
+  name: string
+  path: string
+  type: 'file' | 'dir'
+  size: number
+}

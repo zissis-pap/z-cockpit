@@ -5,6 +5,7 @@ import { projects as projectsApi } from '../../api/client'
 interface Props {
   repo: GitRepo
   busy: boolean
+  onOpen: (repo: GitRepo) => void
   onAction: (repo: GitRepo, action: 'clone' | 'pull' | 'fetch') => void
   onStatusChange: (repoKey: string, status: RepoStatus) => void
 }
@@ -50,7 +51,7 @@ function timeAgo(iso: string): string {
   return `${Math.floor(days / 30)}mo ago`
 }
 
-export default function RepoCard({ repo, busy, onAction, onStatusChange }: Props) {
+export default function RepoCard({ repo, busy, onOpen, onAction, onStatusChange }: Props) {
   const [showCommit, setShowCommit] = useState(false)
   const [commitMsg, setCommitMsg] = useState('')
   const [changes, setChanges] = useState<Array<{ code: string; file: string }>>([])
@@ -87,12 +88,15 @@ export default function RepoCard({ repo, busy, onAction, onStatusChange }: Props
         <div className="flex items-start gap-2.5">
           <span className={`${STATUS_DOT[s]} mt-1.5 shrink-0`} title={STATUS_LABEL[s]} />
 
-          <div className="flex-1 min-w-0">
+          {/* Clickable info area */}
+          <div
+            className="flex-1 min-w-0 cursor-pointer"
+            onClick={() => onOpen(repo)}
+          >
             <div className="flex items-center gap-2 flex-wrap">
-              <a href={repo.html_url} target="_blank" rel="noreferrer"
-                className="font-medium text-zinc-200 hover:text-blue-400 transition-colors text-sm">
+              <span className="font-medium text-zinc-200 hover:text-blue-400 transition-colors text-sm">
                 {repo.name}
-              </a>
+              </span>
               {repo.private && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded border border-[#30363d] text-zinc-500">private</span>
               )}
@@ -113,10 +117,22 @@ export default function RepoCard({ repo, busy, onAction, onStatusChange }: Props
               {repo.behind ? ` (${repo.behind} commit${repo.behind !== 1 ? 's' : ''} behind)` : ''}
               <span className="text-zinc-700 ml-2">{timeAgo(repo.updated_at)}</span>
             </div>
-          </div>
+          </div>  {/* end clickable area */}
 
           {/* Action buttons */}
           <div className="flex items-center gap-1.5 shrink-0">
+            <a
+              href={repo.html_url}
+              target="_blank"
+              rel="noreferrer"
+              className="btn-ghost text-xs py-1 px-2 inline-flex items-center"
+              title="Open repository in browser"
+              onClick={e => e.stopPropagation()}
+            >
+              <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="currentColor">
+                <path d="M3.75 2h3.5a.75.75 0 0 1 0 1.5h-3.5a.25.25 0 0 0-.25.25v8.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-3.5a.75.75 0 0 1 1.5 0v3.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-8.5C2 2.784 2.784 2 3.75 2Zm6.854-1h4.146a.25.25 0 0 1 .25.25v4.146a.25.25 0 0 1-.427.177L13.03 4.03 9.28 7.78a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042l3.75-3.75-1.543-1.543A.25.25 0 0 1 10.604 1Z"/>
+              </svg>
+            </a>
             {s === 'not_cloned' && (
               <button className="btn-primary text-xs py-1 px-2.5"
                 onClick={() => onAction(repo, 'clone')}

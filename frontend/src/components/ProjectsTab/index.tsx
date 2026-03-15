@@ -3,6 +3,7 @@ import type { GitRepo, RepoStatus, LogEntry, Platform } from '../../types'
 import { projects as projectsApi } from '../../api/client'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import RepoCard from './RepoCard'
+import ProjectView from './ProjectView'
 
 let logSeq = 0
 
@@ -12,6 +13,7 @@ function repoKey(repo: GitRepo) { return `${repo.account_id}/${repo.name}` }
 const PLATFORM_LABEL: Record<Platform, string> = { github: 'GitHub', bitbucket: 'Bitbucket' }
 
 export default function ProjectsTab() {
+  const [openRepo, setOpenRepo] = useState<GitRepo | null>(null)
   const [repos, setRepos] = useState<GitRepo[]>([])
   const [loading, setLoading] = useState(false)
   const [notConfigured, setNotConfigured] = useState(false)
@@ -141,6 +143,16 @@ export default function ProjectsTab() {
 
   const showGroupHeaders = grouped.length > 1
 
+  if (openRepo) {
+    return (
+      <ProjectView
+        repo={openRepo}
+        onBack={() => setOpenRepo(null)}
+        onStatusChange={handleStatusChange}
+      />
+    )
+  }
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex-1 overflow-hidden flex flex-col min-h-0">
@@ -217,6 +229,7 @@ export default function ProjectsTab() {
                         key={repoKey(repo)}
                         repo={repo}
                         busy={busyRepos.has(repoKey(repo))}
+                        onOpen={setOpenRepo}
                         onAction={handleAction}
                         onStatusChange={handleStatusChange}
                       />
