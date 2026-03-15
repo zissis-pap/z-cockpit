@@ -1,0 +1,95 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    background-color: #0a0c10;
+    color: #e6edf3;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-size: 14px;
+  }
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #0f1117;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #30363d;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #484f58;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply bg-[#161b22] border border-[#30363d] rounded-lg;
+  }
+  .panel-header {
+    @apply px-3 py-2 border-b border-[#30363d] text-xs font-semibold text-zinc-400 uppercase tracking-wider;
+  }
+  .btn {
+    @apply px-3 py-1.5 rounded text-sm font-medium transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-blue-600 hover:bg-blue-500 text-white;
+  }
+  .btn-danger {
+    @apply btn bg-red-700 hover:bg-red-600 text-white;
+  }
+  .btn-success {
+    @apply btn bg-green-700 hover:bg-green-600 text-white;
+  }
+  .btn-ghost {
+    @apply btn bg-transparent hover:bg-[#21262d] text-zinc-300 border border-[#30363d];
+  }
+  .btn-amber {
+    @apply btn bg-amber-700 hover:bg-amber-600 text-white;
+  }
+  .input {
+    @apply bg-[#0f1117] border border-[#30363d] rounded px-2 py-1.5 text-sm text-zinc-200
+           focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30
+           placeholder-zinc-600 transition-colors;
+  }
+  .select {
+    @apply input cursor-pointer;
+  }
+  .mono {
+    @apply font-mono;
+  }
+  .status-dot {
+    @apply inline-block w-2 h-2 rounded-full;
+  }
+  .status-dot-green {
+    @apply status-dot bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.6)];
+  }
+  .status-dot-red {
+    @apply status-dot bg-red-500;
+  }
+  .status-dot-amber {
+    @apply status-dot bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.6)];
+  }
+  .tab-btn {
+    @apply px-4 py-2 text-sm font-medium border-b-2 transition-colors duration-150 whitespace-nowrap;
+  }
+  .tab-btn-active {
+    @apply tab-btn border-blue-500 text-blue-400;
+  }
+  .tab-btn-inactive {
+    @apply tab-btn border-transparent text-zinc-500 hover:text-zinc-300 hover:border-[#30363d];
+  }
+}
