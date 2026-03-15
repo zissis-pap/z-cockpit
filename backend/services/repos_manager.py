@@ -186,7 +186,7 @@ class ReposManager:
         # Commit (allow "nothing to commit" — exit 1 but not a fatal error)
         await self._stream_proc(['git', 'commit', '-m', message], cwd=repo_path, repo_key=repo_key)
 
-        # Push with credentials injected into the remote URL
+        # Push with credentials — use remote name so tracking refs are updated
         rc, remote_url, _ = await self._run(['git', 'remote', 'get-url', 'origin'], cwd=repo_path)
         if rc != 0:
             await self._log(repo_key, 'Could not determine remote URL', 'error')
@@ -201,7 +201,10 @@ class ReposManager:
         else:
             auth_url = github_manager.make_auth_clone_url(clean_url, account['token'])
 
-        ok = await self._stream_proc(['git', 'push', auth_url, 'HEAD'], cwd=repo_path, repo_key=repo_key)
+        # Temporarily set remote to auth URL, push via remote name (updates tracking refs), restore clean URL
+        await self._run(['git', 'remote', 'set-url', 'origin', auth_url], cwd=repo_path)
+        ok = await self._stream_proc(['git', 'push', 'origin', 'HEAD'], cwd=repo_path, repo_key=repo_key)
+        await self._run(['git', 'remote', 'set-url', 'origin', clean_url], cwd=repo_path)
         await self.broadcast({'type': 'op_done', 'op': 'commit', 'repo': repo_key, 'ok': ok})
 
 

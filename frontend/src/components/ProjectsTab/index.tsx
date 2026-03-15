@@ -23,7 +23,7 @@ export default function ProjectsTab() {
   const [busyRepos, setBusyRepos] = useState<Set<string>>(new Set())
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [logCollapsed, setLogCollapsed] = useState(false)
-  const { height: logHeight, onMouseDown: logDragStart } = useResizable(180)
+  const { height: logHeight, onMouseDown: logDragStart } = useResizable(600)
   const logBottomRef = useRef<HTMLDivElement>(null)
   const logContainerRef = useRef<HTMLDivElement>(null)
 
