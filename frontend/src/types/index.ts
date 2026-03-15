@@ -53,15 +53,21 @@ export interface ApiResponse<T = unknown> {
   data?: T
 }
 
-export interface AppSettings {
-  github_username: string
-  github_token: string
+export type Platform = 'github' | 'bitbucket'
+
+export interface Account {
+  id: string
+  platform: Platform
+  label: string
+  username: string
+  token: string        // masked on server side
+  workspace: string    // bitbucket workspace slug
   clone_base_path: string
 }
 
 export type RepoStatus = 'not_cloned' | 'clean' | 'dirty' | 'behind' | 'diverged' | 'unknown'
 
-export interface GitHubRepo {
+export interface GitRepo {
   name: string
   full_name: string
   description: string
@@ -74,6 +80,12 @@ export interface GitHubRepo {
   stargazers_count: number
   status: RepoStatus
   local_path: string
-  has_changes?: boolean
   behind?: number
+  platform: Platform
+  account_id: string
+  account_label: string
+  account_username: string
 }
+
+// Alias kept for compatibility with existing components
+export type GitHubRepo = GitRepo

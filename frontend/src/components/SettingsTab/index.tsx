@@ -1,86 +1,238 @@
 import { useState, useEffect } from 'react'
+import type { Account, Platform } from '../../types'
 import { settings as settingsApi } from '../../api/client'
 
+const PLATFORM_LABEL: Record<Platform, string> = {
+  github: 'GitHub',
+  bitbucket: 'Bitbucket',
+}
+
+const PLATFORM_COLOR: Record<Platform, string> = {
+  github: 'bg-zinc-700 text-zinc-300',
+  bitbucket: 'bg-blue-900/60 text-blue-300',
+}
+
 interface FormState {
-  github_username: string
-  github_token: string
+  platform: Platform
+  label: string
+  username: string
+  token: string
+  workspace: string
   clone_base_path: string
 }
 
-export default function SettingsTab() {
-  const [form, setForm] = useState<FormState>({
-    github_username: '',
-    github_token: '',
-    clone_base_path: '',
-  })
-  const [savedToken, setSavedToken] = useState('')   // masked value from server
+const EMPTY_FORM: FormState = {
+  platform: 'github',
+  label: '',
+  username: '',
+  token: '',
+  workspace: '',
+  clone_base_path: '',
+}
+
+function AccountForm({
+  initial,
+  savedToken,
+  onSave,
+  onCancel,
+}: {
+  initial: FormState
+  savedToken: string
+  onSave: (data: FormState) => Promise<void>
+  onCancel: () => void
+}) {
+  const [form, setForm] = useState<FormState>(initial)
   const [tokenFocused, setTokenFocused] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [testing, setTesting] = useState(false)
-  const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null)
-  const [testMsg, setTestMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [error, setError] = useState('')
 
-  useEffect(() => {
-    settingsApi.get().then(res => {
-      if (res.ok) {
-        setForm({
-          github_username: res.settings.github_username,
-          github_token: res.settings.github_token,   // masked
-          clone_base_path: res.settings.clone_base_path,
-        })
-        setSavedToken(res.settings.github_token)
-      }
-    }).catch(() => {})
-  }, [])
-
-  function field(key: keyof FormState, value: string) {
+  function field<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm(f => ({ ...f, [key]: value }))
-    setSaveMsg(null)
+    setError('')
   }
 
-  async function save() {
+  async function submit() {
+    if (!form.username.trim()) { setError('Username is required'); return }
     setSaving(true)
-    setSaveMsg(null)
-    const payload: Partial<FormState> = {
-      github_username: form.github_username,
-      clone_base_path: form.clone_base_path,
-    }
-    // Only include token if it was actually changed (not the masked placeholder)
-    if (form.github_token && form.github_token !== savedToken) {
-      payload.github_token = form.github_token
-    }
     try {
-      const res = await settingsApi.save(payload)
-      setSaveMsg({ ok: res.ok, text: res.ok ? 'Settings saved.' : 'Save failed.' })
-      if (res.ok) {
-        // Refresh to get new masked token
-        const fresh = await settingsApi.get()
-        if (fresh.ok) {
-          setForm(f => ({ ...f, github_token: fresh.settings.github_token }))
-          setSavedToken(fresh.settings.github_token)
-        }
+      const payload: Partial<FormState> = { ...form }
+      // Don't send masked token back
+      if (payload.token && payload.token === savedToken) {
+        delete payload.token
       }
+      await onSave(payload as FormState)
     } catch (e) {
-      setSaveMsg({ ok: false, text: String(e) })
+      setError(String(e))
     } finally {
       setSaving(false)
     }
   }
 
-  async function testConnection() {
-    setTesting(true)
-    setTestMsg(null)
+  const isBitbucket = form.platform === 'bitbucket'
+
+  return (
+    <div className="border-t border-[#21262d] pt-4 mt-2 space-y-3">
+      {/* Platform */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-zinc-400 block mb-1">Platform</label>
+          <select
+            className="input w-full"
+            value={form.platform}
+            onChange={e => field('platform', e.target.value as Platform)}
+          >
+            <option value="github">GitHub</option>
+            <option value="bitbucket">Bitbucket</option>
+          </select>
+        </div>
+        <div>
+          <label className="text-xs text-zinc-400 block mb-1">Label</label>
+          <input
+            className="input w-full"
+            placeholder="e.g. Work, Personal"
+            value={form.label}
+            onChange={e => field('label', e.target.value)}
+          />
+        </div>
+      </div>
+
+      {/* Username */}
+      <div>
+        <label className="text-xs text-zinc-400 block mb-1">
+          {isBitbucket ? 'Bitbucket Username' : 'GitHub Username'}
+        </label>
+        <input
+          className="input w-full"
+          placeholder={isBitbucket ? 'your-username' : 'your-username'}
+          value={form.username}
+          onChange={e => field('username', e.target.value)}
+          autoComplete="off"
+        />
+      </div>
+
+      {/* Token */}
+      <div>
+        <label className="text-xs text-zinc-400 block mb-1">
+          {isBitbucket ? 'App Password' : 'Personal Access Token'}
+        </label>
+        <input
+          className="input w-full mono"
+          type={tokenFocused ? 'text' : 'password'}
+          value={tokenFocused ? (form.token === savedToken ? '' : form.token) : form.token}
+          onFocus={() => {
+            setTokenFocused(true)
+            if (form.token === savedToken) field('token', '')
+          }}
+          onBlur={() => {
+            setTokenFocused(false)
+            if (!form.token) field('token', savedToken)
+          }}
+          onChange={e => field('token', e.target.value)}
+          placeholder="Leave blank to keep existing"
+          autoComplete="new-password"
+        />
+        <p className="text-xs text-zinc-600 mt-1">
+          {isBitbucket
+            ? 'Create an App Password with repository read/write permissions.'
+            : 'Requires repo scope for private repositories.'}
+        </p>
+      </div>
+
+      {/* Workspace (Bitbucket only) */}
+      {isBitbucket && (
+        <div>
+          <label className="text-xs text-zinc-400 block mb-1">Workspace slug</label>
+          <input
+            className="input w-full"
+            placeholder="Defaults to username if blank"
+            value={form.workspace}
+            onChange={e => field('workspace', e.target.value)}
+          />
+          <p className="text-xs text-zinc-600 mt-1">
+            The workspace slug from bitbucket.org/&#123;workspace&#125;
+          </p>
+        </div>
+      )}
+
+      {/* Clone path */}
+      <div>
+        <label className="text-xs text-zinc-400 block mb-1">Clone Base Path</label>
+        <input
+          className="input w-full mono"
+          placeholder="~/Projects"
+          value={form.clone_base_path}
+          onChange={e => field('clone_base_path', e.target.value)}
+        />
+      </div>
+
+      {error && <p className="text-xs text-red-400">✗ {error}</p>}
+
+      <div className="flex gap-2 pt-1">
+        <button className="btn-primary text-xs px-4" onClick={submit} disabled={saving}>
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        <button className="btn-ghost text-xs px-3" onClick={onCancel} disabled={saving}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
+export default function SettingsTab() {
+  const [accounts, setAccounts] = useState<Account[]>([])
+  const [loading, setLoading] = useState(true)
+  const [editingId, setEditingId] = useState<string | null>(null)  // account id or 'new'
+  const [testResults, setTestResults] = useState<Record<string, { ok: boolean; text: string }>>({})
+  const [testing, setTesting] = useState<string | null>(null)
+
+  async function loadAccounts() {
     try {
-      const res = await settingsApi.testConnection()
-      if (res.ok) {
-        setTestMsg({ ok: true, text: `Connected as ${res.login}${res.name ? ` (${res.name})` : ''}` })
-      } else {
-        setTestMsg({ ok: false, text: res.error ?? 'Connection failed' })
-      }
+      const res = await settingsApi.accounts()
+      if (res.ok) setAccounts(res.accounts)
+    } catch { /* ignore */ } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { loadAccounts() }, [])
+
+  async function handleAdd(data: FormState) {
+    await settingsApi.addAccount(data)
+    setEditingId(null)
+    await loadAccounts()
+  }
+
+  async function handleUpdate(id: string, data: FormState) {
+    await settingsApi.updateAccount(id, data)
+    setEditingId(null)
+    await loadAccounts()
+  }
+
+  async function handleDelete(id: string) {
+    await settingsApi.deleteAccount(id)
+    setAccounts(prev => prev.filter(a => a.id !== id))
+    if (editingId === id) setEditingId(null)
+  }
+
+  async function handleTest(id: string) {
+    setTesting(id)
+    setTestResults(prev => ({ ...prev, [id]: { ok: false, text: 'Testing…' } }))
+    try {
+      const res = await settingsApi.testAccount(id)
+      setTestResults(prev => ({
+        ...prev,
+        [id]: {
+          ok: res.ok,
+          text: res.ok
+            ? `Connected as ${res.login}${res.name ? ` (${res.name})` : ''}`
+            : (res.error ?? 'Connection failed'),
+        },
+      }))
     } catch (e) {
-      setTestMsg({ ok: false, text: String(e) })
+      setTestResults(prev => ({ ...prev, [id]: { ok: false, text: String(e) } }))
     } finally {
-      setTesting(false)
+      setTesting(null)
     }
   }
 
@@ -88,96 +240,109 @@ export default function SettingsTab() {
     <div className="flex flex-col h-full p-6 overflow-y-auto">
       <div className="max-w-2xl mx-auto w-full space-y-5">
 
-        <div>
-          <h2 className="text-base font-semibold text-zinc-200">Settings</h2>
-          <p className="text-xs text-zinc-500 mt-0.5">Application configuration. Stored in ~/.config/z-cockpit/settings.json</p>
-        </div>
-
-        {/* GitHub */}
-        <div className="panel">
-          <div className="panel-header">GitHub</div>
-          <div className="p-4 space-y-4">
-
-            <div>
-              <label className="text-xs text-zinc-400 block mb-1">GitHub Username</label>
-              <input
-                className="input w-full"
-                value={form.github_username}
-                onChange={e => field('github_username', e.target.value)}
-                placeholder="your-username"
-                autoComplete="off"
-              />
-              <p className="text-xs text-zinc-600 mt-1">Used to list public repos if no token is set.</p>
-            </div>
-
-            <div>
-              <label className="text-xs text-zinc-400 block mb-1">Personal Access Token</label>
-              <input
-                className="input w-full mono"
-                type={tokenFocused ? 'text' : 'password'}
-                value={tokenFocused ? (form.github_token === savedToken ? '' : form.github_token) : form.github_token}
-                onFocus={() => {
-                  setTokenFocused(true)
-                  // Clear so user can type a new one
-                  if (form.github_token === savedToken) field('github_token', '')
-                }}
-                onBlur={() => {
-                  setTokenFocused(false)
-                  // Restore masked value if user left it blank
-                  if (!form.github_token) {
-                    setForm(f => ({ ...f, github_token: savedToken }))
-                  }
-                }}
-                onChange={e => field('github_token', e.target.value)}
-                placeholder="ghp_… (leave blank to keep existing)"
-                autoComplete="new-password"
-              />
-              <p className="text-xs text-zinc-600 mt-1">
-                Needed for private repos and higher API rate limits. Requires <code className="text-zinc-500">repo</code> scope.
-              </p>
-            </div>
-
-            <div className="flex gap-2 items-center">
-              <button className="btn-ghost" onClick={testConnection} disabled={testing}>
-                {testing ? 'Testing…' : 'Test Connection'}
-              </button>
-              {testMsg && (
-                <span className={`text-xs ${testMsg.ok ? 'text-green-400' : 'text-red-400'}`}>
-                  {testMsg.ok ? '✓' : '✗'} {testMsg.text}
-                </span>
-              )}
-            </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-zinc-200">Git Accounts</h2>
+            <p className="text-xs text-zinc-500 mt-0.5">Stored in ~/.config/z-cockpit/settings.json</p>
           </div>
-        </div>
-
-        {/* Paths */}
-        <div className="panel">
-          <div className="panel-header">Local Storage</div>
-          <div className="p-4">
-            <label className="text-xs text-zinc-400 block mb-1">Clone Base Path</label>
-            <input
-              className="input w-full mono"
-              value={form.clone_base_path}
-              onChange={e => field('clone_base_path', e.target.value)}
-              placeholder="~/Projects"
-            />
-            <p className="text-xs text-zinc-600 mt-1">
-              Repositories will be cloned into subdirectories of this path.
-            </p>
-          </div>
-        </div>
-
-        {/* Save */}
-        <div className="flex items-center gap-3">
-          <button className="btn-primary px-6" onClick={save} disabled={saving}>
-            {saving ? 'Saving…' : 'Save Settings'}
+          <button
+            className="btn-primary text-xs px-3 py-1.5"
+            onClick={() => setEditingId(editingId === 'new' ? null : 'new')}
+          >
+            {editingId === 'new' ? 'Cancel' : '+ Add Account'}
           </button>
-          {saveMsg && (
-            <span className={`text-sm ${saveMsg.ok ? 'text-green-400' : 'text-red-400'}`}>
-              {saveMsg.ok ? '✓' : '✗'} {saveMsg.text}
-            </span>
-          )}
         </div>
+
+        {/* Add account form */}
+        {editingId === 'new' && (
+          <div className="panel p-4">
+            <div className="text-sm font-medium text-zinc-300 mb-1">New Account</div>
+            <AccountForm
+              initial={EMPTY_FORM}
+              savedToken=""
+              onSave={handleAdd}
+              onCancel={() => setEditingId(null)}
+            />
+          </div>
+        )}
+
+        {/* Account list */}
+        {loading ? (
+          <div className="text-xs text-zinc-600 italic">Loading…</div>
+        ) : accounts.length === 0 && editingId !== 'new' ? (
+          <div className="panel p-6 text-center">
+            <div className="text-zinc-500 text-sm">No accounts configured.</div>
+            <div className="text-zinc-600 text-xs mt-1">Add a GitHub or Bitbucket account to get started.</div>
+          </div>
+        ) : (
+          accounts.map(acct => (
+            <div key={acct.id} className="panel">
+              <div className="p-4">
+                {/* Account header */}
+                <div className="flex items-center gap-3">
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${PLATFORM_COLOR[acct.platform]}`}>
+                    {PLATFORM_LABEL[acct.platform]}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-zinc-200">
+                      {acct.label || acct.username}
+                    </div>
+                    <div className="text-xs text-zinc-500">
+                      @{acct.username}
+                      {acct.workspace && acct.workspace !== acct.username && ` · workspace: ${acct.workspace}`}
+                      <span className="text-zinc-700 ml-2 mono">{acct.clone_base_path}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      className="btn-ghost text-xs py-1 px-2"
+                      onClick={() => handleTest(acct.id)}
+                      disabled={testing === acct.id}
+                    >
+                      {testing === acct.id ? 'Testing…' : 'Test'}
+                    </button>
+                    <button
+                      className={`text-xs py-1 px-2 btn ${editingId === acct.id ? 'bg-amber-700/30 border border-amber-600/40 text-amber-400' : 'btn-ghost'}`}
+                      onClick={() => setEditingId(editingId === acct.id ? null : acct.id)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="btn-ghost text-xs py-1 px-2 text-red-400 hover:text-red-300"
+                      onClick={() => handleDelete(acct.id)}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+
+                {/* Test result */}
+                {testResults[acct.id] && (
+                  <div className={`text-xs mt-2 ${testResults[acct.id].ok ? 'text-green-400' : 'text-red-400'}`}>
+                    {testResults[acct.id].ok ? '✓' : '✗'} {testResults[acct.id].text}
+                  </div>
+                )}
+
+                {/* Edit form */}
+                {editingId === acct.id && (
+                  <AccountForm
+                    initial={{
+                      platform: acct.platform,
+                      label: acct.label,
+                      username: acct.username,
+                      token: acct.token,
+                      workspace: acct.workspace,
+                      clone_base_path: acct.clone_base_path,
+                    }}
+                    savedToken={acct.token}
+                    onSave={data => handleUpdate(acct.id, data)}
+                    onCancel={() => setEditingId(null)}
+                  />
+                )}
+              </div>
+            </div>
+          ))
+        )}
 
       </div>
     </div>

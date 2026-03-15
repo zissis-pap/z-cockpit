@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react'
-import type { GitHubRepo, RepoStatus } from '../../types'
+import type { GitRepo, RepoStatus } from '../../types'
 import { projects as projectsApi } from '../../api/client'
 
 interface Props {
-  repo: GitHubRepo
+  repo: GitRepo
   busy: boolean
-  onAction: (name: string, action: 'clone' | 'pull' | 'fetch') => void
-  onStatusChange: (name: string, status: RepoStatus) => void
+  onAction: (repo: GitRepo, action: 'clone' | 'pull' | 'fetch') => void
+  onStatusChange: (repoKey: string, status: RepoStatus) => void
 }
+
+function repoKey(repo: GitRepo) { return `${repo.account_id}/${repo.name}` }
 
 const STATUS_DOT: Record<RepoStatus, string> = {
   clean:     'status-dot-green',
@@ -55,16 +57,16 @@ export default function RepoCard({ repo, busy, onAction, onStatusChange }: Props
   const [committingLocal, setCommittingLocal] = useState(false)
 
   useEffect(() => {
-    if (showCommit && repo.status === 'dirty' || repo.status === 'diverged') {
-      projectsApi.changes(repo.name).then(r => { if (r.ok) setChanges(r.files) })
+    if (showCommit && (repo.status === 'dirty' || repo.status === 'diverged')) {
+      projectsApi.changes(repo.account_id, repo.name).then(r => { if (r.ok) setChanges(r.files) })
     }
-  }, [showCommit, repo.name, repo.status])
+  }, [showCommit, repo.account_id, repo.name, repo.status])
 
   async function doCommit() {
     if (!commitMsg.trim()) return
     setCommittingLocal(true)
     try {
-      await projectsApi.commit(repo.name, commitMsg)
+      await projectsApi.commit(repo.account_id, repo.name, commitMsg)
       setCommitMsg('')
       setShowCommit(false)
     } finally {
@@ -72,7 +74,6 @@ export default function RepoCard({ repo, busy, onAction, onStatusChange }: Props
     }
   }
 
-  const isActive = busy
   const s = repo.status
 
   return (
@@ -118,30 +119,30 @@ export default function RepoCard({ repo, busy, onAction, onStatusChange }: Props
           <div className="flex items-center gap-1.5 shrink-0">
             {s === 'not_cloned' && (
               <button className="btn-primary text-xs py-1 px-2.5"
-                onClick={() => onAction(repo.name, 'clone')}
-                disabled={isActive}>
-                {isActive ? '…' : 'Clone'}
+                onClick={() => onAction(repo, 'clone')}
+                disabled={busy}>
+                {busy ? '…' : 'Clone'}
               </button>
             )}
             {(s === 'clean' || s === 'behind' || s === 'diverged') && (
               <button className="btn-ghost text-xs py-1 px-2.5"
-                onClick={() => onAction(repo.name, 'pull')}
-                disabled={isActive}>
-                {isActive ? '…' : 'Pull'}
+                onClick={() => onAction(repo, 'pull')}
+                disabled={busy}>
+                {busy ? '…' : 'Pull'}
               </button>
             )}
             {(s === 'dirty' || s === 'diverged' || s === 'clean') && (
               <button
                 className={`text-xs py-1 px-2.5 btn ${showCommit ? 'bg-amber-700/30 border border-amber-600/40 text-amber-400' : 'btn-ghost'}`}
                 onClick={() => setShowCommit(v => !v)}
-                disabled={isActive}>
+                disabled={busy}>
                 Commit
               </button>
             )}
             {s !== 'not_cloned' && (
               <button className="btn-ghost text-xs py-1 px-2" title="Fetch remote status"
-                onClick={() => onAction(repo.name, 'fetch')}
-                disabled={isActive}>
+                onClick={() => onAction(repo, 'fetch')}
+                disabled={busy}>
                 ⟳
               </button>
             )}

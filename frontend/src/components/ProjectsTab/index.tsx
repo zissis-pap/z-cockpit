@@ -1,13 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import type { GitHubRepo, RepoStatus, LogEntry } from '../../types'
+import type { GitRepo, RepoStatus, LogEntry, Platform } from '../../types'
 import { projects as projectsApi } from '../../api/client'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import RepoCard from './RepoCard'
 
 let logSeq = 0
 
+// repo_key format from backend: "{account_id}/{repo_name}"
+function repoKey(repo: GitRepo) { return `${repo.account_id}/${repo.name}` }
+
+const PLATFORM_LABEL: Record<Platform, string> = { github: 'GitHub', bitbucket: 'Bitbucket' }
+
 export default function ProjectsTab() {
-  const [repos, setRepos] = useState<GitHubRepo[]>([])
+  const [repos, setRepos] = useState<GitRepo[]>([])
   const [loading, setLoading] = useState(false)
   const [notConfigured, setNotConfigured] = useState(false)
   const [search, setSearch] = useState('')
@@ -23,13 +28,19 @@ export default function ProjectsTab() {
     setLogs(prev => [...prev.slice(-1000), { id: logSeq++, text, level: level as LogEntry['level'], timestamp: ts }])
   }, [])
 
-  // Update single repo status after an operation completes
-  const refreshRepoStatus = useCallback(async (name: string) => {
+  const refreshRepoStatus = useCallback(async (key: string) => {
+    // key is "{account_id}/{repo_name}"
+    const slash = key.indexOf('/')
+    if (slash < 0) return
+    const accountId = key.slice(0, slash)
+    const name = key.slice(slash + 1)
     try {
-      const res = await projectsApi.status(name)
+      const res = await projectsApi.status(accountId, name)
       if (res.ok) {
         setRepos(prev => prev.map(r =>
-          r.name === name ? { ...r, status: res.status as RepoStatus } : r
+          repoKey(r) === key
+            ? { ...r, status: res.status as RepoStatus, local_path: res.local_path ?? r.local_path, behind: res.behind }
+            : r
         ))
       }
     } catch { /* ignore */ }
@@ -51,7 +62,6 @@ export default function ProjectsTab() {
 
   useWebSocket('/ws/projects', handleWsMessage)
 
-  // Auto-scroll log
   useEffect(() => {
     const el = logContainerRef.current
     if (!el) return
@@ -79,16 +89,14 @@ export default function ProjectsTab() {
 
   useEffect(() => { loadRepos() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  function handleAction(name: string, action: 'clone' | 'pull' | 'fetch') {
-    const repo = repos.find(r => r.name === name)
-    if (!repo) return
-    if (action === 'clone') projectsApi.clone(name, repo.clone_url)
-    else if (action === 'pull') projectsApi.pull(name)
-    else if (action === 'fetch') projectsApi.fetch(name)
+  function handleAction(repo: GitRepo, action: 'clone' | 'pull' | 'fetch') {
+    if (action === 'clone') projectsApi.clone(repo.account_id, repo.name, repo.clone_url)
+    else if (action === 'pull') projectsApi.pull(repo.account_id, repo.name)
+    else if (action === 'fetch') projectsApi.fetch(repo.account_id, repo.name)
   }
 
-  function handleStatusChange(name: string, status: RepoStatus) {
-    setRepos(prev => prev.map(r => r.name === name ? { ...r, status } : r))
+  function handleStatusChange(key: string, status: RepoStatus) {
+    setRepos(prev => prev.map(r => repoKey(r) === key ? { ...r, status } : r))
   }
 
   // Filtered + searched repos
@@ -96,21 +104,42 @@ export default function ProjectsTab() {
     const q = search.toLowerCase()
     const matchSearch = !q || r.name.toLowerCase().includes(q) || r.description.toLowerCase().includes(q)
     const matchFilter =
-      filter === 'all' ? true :
-      filter === 'cloned' ? r.status !== 'not_cloned' :
+      filter === 'all'     ? true :
+      filter === 'cloned'  ? r.status !== 'not_cloned' :
       filter === 'changes' ? (r.status === 'dirty' || r.status === 'diverged') :
-      filter === 'behind' ? (r.status === 'behind' || r.status === 'diverged') : true
+      filter === 'behind'  ? (r.status === 'behind' || r.status === 'diverged') : true
     return matchSearch && matchFilter
   })
 
   const counts = {
-    cloned: repos.filter(r => r.status !== 'not_cloned').length,
+    cloned:  repos.filter(r => r.status !== 'not_cloned').length,
     changes: repos.filter(r => r.status === 'dirty' || r.status === 'diverged').length,
-    behind: repos.filter(r => r.status === 'behind' || r.status === 'diverged').length,
+    behind:  repos.filter(r => r.status === 'behind' || r.status === 'diverged').length,
   }
 
   const levelColor = (l: string) =>
     l === 'error' ? 'text-red-400' : l === 'warn' ? 'text-amber-400' : 'text-zinc-400'
+
+  // Group filtered repos by platform → account_id
+  const grouped = (() => {
+    const platformOrder: Platform[] = ['github', 'bitbucket']
+    const map = new Map<string, { platform: Platform; label: string; repos: GitRepo[] }>()
+    for (const r of filtered) {
+      const key = r.account_id
+      if (!map.has(key)) map.set(key, { platform: r.platform, label: r.account_label || r.account_username, repos: [] })
+      map.get(key)!.repos.push(r)
+    }
+    // Sort by platform then by label
+    return [...map.entries()]
+      .sort(([, a], [, b]) => {
+        const pi = platformOrder.indexOf(a.platform) - platformOrder.indexOf(b.platform)
+        if (pi !== 0) return pi
+        return a.label.localeCompare(b.label)
+      })
+      .map(([, v]) => v)
+  })()
+
+  const showGroupHeaders = grouped.length > 1
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -124,7 +153,6 @@ export default function ProjectsTab() {
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
-          {/* Filter pills */}
           {(['all', 'cloned', 'changes', 'behind'] as const).map(f => (
             <button key={f}
               onClick={() => setFilter(f)}
@@ -133,8 +161,8 @@ export default function ProjectsTab() {
                   ? 'bg-blue-600/20 border-blue-500/40 text-blue-400'
                   : 'border-[#30363d] text-zinc-500 hover:text-zinc-300'
               }`}>
-              {f === 'all' ? `All (${repos.length})` :
-               f === 'cloned' ? `Cloned (${counts.cloned})` :
+              {f === 'all'     ? `All (${repos.length})` :
+               f === 'cloned'  ? `Cloned (${counts.cloned})` :
                f === 'changes' ? `Changes (${counts.changes})` :
                `Behind (${counts.behind})`}
             </button>
@@ -153,8 +181,8 @@ export default function ProjectsTab() {
                 <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>
               </svg>
               <div>
-                <div className="text-zinc-400 font-medium">GitHub not configured</div>
-                <div className="text-zinc-600 text-xs mt-1">Go to Settings and add your GitHub username and token.</div>
+                <div className="text-zinc-400 font-medium">No accounts configured</div>
+                <div className="text-zinc-600 text-xs mt-1">Go to Settings and add a GitHub or Bitbucket account.</div>
               </div>
             </div>
           ) : loading && repos.length === 0 ? (
@@ -169,15 +197,32 @@ export default function ProjectsTab() {
           ) : filtered.length === 0 ? (
             <div className="text-zinc-600 text-sm text-center mt-10 italic">No repositories match.</div>
           ) : (
-            <div className="space-y-2">
-              {filtered.map(repo => (
-                <RepoCard
-                  key={repo.name}
-                  repo={repo}
-                  busy={busyRepos.has(repo.name)}
-                  onAction={handleAction}
-                  onStatusChange={handleStatusChange}
-                />
+            <div className="space-y-4">
+              {grouped.map(group => (
+                <div key={`${group.platform}-${group.label}`}>
+                  {showGroupHeaders && (
+                    <div className="flex items-center gap-2 mb-2 px-1">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                        group.platform === 'bitbucket' ? 'bg-blue-900/60 text-blue-300' : 'bg-zinc-700 text-zinc-300'
+                      }`}>
+                        {PLATFORM_LABEL[group.platform]}
+                      </span>
+                      <span className="text-xs font-medium text-zinc-400">{group.label}</span>
+                      <span className="text-xs text-zinc-600">({group.repos.length})</span>
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    {group.repos.map(repo => (
+                      <RepoCard
+                        key={repoKey(repo)}
+                        repo={repo}
+                        busy={busyRepos.has(repoKey(repo))}
+                        onAction={handleAction}
+                        onStatusChange={handleStatusChange}
+                      />
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           )}

@@ -1,3 +1,5 @@
+import type { Account, GitRepo, RepoStatus } from '../types'
+
 const BASE = '/api'
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -51,21 +53,23 @@ export const openocd = {
 // ── Settings ─────────────────────────────────────────────────────────────────
 
 export const settings = {
-  get:            () => req<{ ok: boolean; settings: import('../types').AppSettings }>('GET', '/settings'),
-  save:           (body: object) => req<{ ok: boolean }>('POST', '/settings', body),
-  testConnection: () => req<{ ok: boolean; login?: string; name?: string; error?: string }>('POST', '/settings/test-connection'),
+  accounts:      () => req<{ ok: boolean; accounts: Account[] }>('GET', '/settings/accounts'),
+  addAccount:    (body: object) => req<{ ok: boolean; account: Account }>('POST', '/settings/accounts', body),
+  updateAccount: (id: string, body: object) => req<{ ok: boolean; account: Account }>('PUT', `/settings/accounts/${id}`, body),
+  deleteAccount: (id: string) => req<{ ok: boolean }>('DELETE', `/settings/accounts/${id}`),
+  testAccount:   (id: string) => req<{ ok: boolean; login?: string; name?: string; error?: string }>('POST', `/settings/accounts/${id}/test`),
 }
 
 // ── Projects ──────────────────────────────────────────────────────────────────
 
 export const projects = {
-  repos:   () => req<{ ok: boolean; error?: string; repos: import('../types').GitHubRepo[] }>('GET', '/projects/repos'),
-  status:  (name: string) => req<{ ok: boolean; status: import('../types').RepoStatus }>('GET', `/projects/repos/${name}/status`),
-  changes: (name: string) => req<{ ok: boolean; files: Array<{ code: string; file: string }> }>('GET', `/projects/repos/${name}/changes`),
-  clone:   (name: string, clone_url: string) => req<{ ok: boolean }>('POST', `/projects/repos/${name}/clone?clone_url=${encodeURIComponent(clone_url)}`),
-  pull:    (name: string) => req<{ ok: boolean }>('POST', `/projects/repos/${name}/pull`),
-  fetch:   (name: string) => req<{ ok: boolean }>('POST', `/projects/repos/${name}/fetch`),
-  commit:  (name: string, message: string) => req<{ ok: boolean }>('POST', `/projects/repos/${name}/commit`, { message }),
+  repos:   () => req<{ ok: boolean; error?: string; repos: GitRepo[] }>('GET', '/projects/repos'),
+  status:  (accountId: string, name: string) => req<{ ok: boolean; status: RepoStatus; local_path?: string; behind?: number }>('GET', `/projects/repos/${accountId}/${name}/status`),
+  changes: (accountId: string, name: string) => req<{ ok: boolean; files: Array<{ code: string; file: string }> }>('GET', `/projects/repos/${accountId}/${name}/changes`),
+  clone:   (accountId: string, name: string, clone_url: string) => req<{ ok: boolean }>('POST', `/projects/repos/${accountId}/${name}/clone?clone_url=${encodeURIComponent(clone_url)}`),
+  pull:    (accountId: string, name: string) => req<{ ok: boolean }>('POST', `/projects/repos/${accountId}/${name}/pull`),
+  fetch:   (accountId: string, name: string) => req<{ ok: boolean }>('POST', `/projects/repos/${accountId}/${name}/fetch`),
+  commit:  (accountId: string, name: string, message: string) => req<{ ok: boolean }>('POST', `/projects/repos/${accountId}/${name}/commit`, { message }),
 }
 
 // ── Serial ───────────────────────────────────────────────────────────────────
