@@ -166,20 +166,38 @@ class ReposManager:
         await self.broadcast({'type': 'op_done', 'op': 'fetch', 'repo': repo_key, 'ok': ok})
 
     async def commit_and_push(self, account_id: str, repo_name: str, message: str):
+        import re
         try:
-            _, repo_path, repo_key = self._resolve(account_id, repo_name)
+            account, repo_path, repo_key = self._resolve(account_id, repo_name)
         except ValueError:
             return
         await self.broadcast({'type': 'op_start', 'op': 'commit', 'repo': repo_key})
-        ok = True
-        for args in [
-            ['git', 'add', '-A'],
-            ['git', 'commit', '-m', message],
-            ['git', 'push'],
-        ]:
-            ok = await self._stream_proc(args, cwd=repo_path, repo_key=repo_key)
-            if not ok:
-                break
+
+        # Stage
+        ok = await self._stream_proc(['git', 'add', '-A'], cwd=repo_path, repo_key=repo_key)
+        if not ok:
+            await self.broadcast({'type': 'op_done', 'op': 'commit', 'repo': repo_key, 'ok': False})
+            return
+
+        # Commit (allow "nothing to commit" — exit 1 but not a fatal error)
+        await self._stream_proc(['git', 'commit', '-m', message], cwd=repo_path, repo_key=repo_key)
+
+        # Push with credentials injected into the remote URL
+        rc, remote_url, _ = await self._run(['git', 'remote', 'get-url', 'origin'], cwd=repo_path)
+        if rc != 0:
+            await self._log(repo_key, 'Could not determine remote URL', 'error')
+            await self.broadcast({'type': 'op_done', 'op': 'commit', 'repo': repo_key, 'ok': False})
+            return
+
+        # Strip any existing embedded credentials before re-injecting
+        clean_url = re.sub(r'https://[^@]+@', 'https://', remote_url.strip())
+        platform = account.get('platform', 'github')
+        if platform == 'bitbucket':
+            auth_url = bitbucket_manager.make_auth_clone_url(clean_url, account['username'], account['token'])
+        else:
+            auth_url = github_manager.make_auth_clone_url(clean_url, account['token'])
+
+        ok = await self._stream_proc(['git', 'push', auth_url, 'HEAD'], cwd=repo_path, repo_key=repo_key)
         await self.broadcast({'type': 'op_done', 'op': 'commit', 'repo': repo_key, 'ok': ok})
 
 
