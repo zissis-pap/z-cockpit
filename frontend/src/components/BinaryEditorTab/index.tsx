@@ -45,6 +45,7 @@ export default function BinaryEditorTab() {
   const [editBuf, setEditBuf]     = useState('')
   const [saved, setSaved]         = useState(true)
   const [jumpInput, setJumpInput] = useState('')
+  const [history, setHistory]     = useState<Uint8Array[]>([])
 
   // Compare state
   const [cmpData, setCmpData]         = useState<Uint8Array | null>(null)
@@ -96,7 +97,7 @@ export default function BinaryEditorTab() {
     reader.onload = e => {
       const arr = new Uint8Array(e.target!.result as ArrayBuffer)
       setData(arr); setOriginal(arr.slice()); setFileName(file.name)
-      setCursor(null); setEditBuf(''); setSaved(true)
+      setCursor(null); setEditBuf(''); setSaved(true); setHistory([])
       setEditorScroll(0)
       if (editorScrollRef.current) editorScrollRef.current.scrollTop = 0
     }
@@ -127,7 +128,7 @@ export default function BinaryEditorTab() {
 
   function closeFileA() {
     setData(null); setOriginal(null); setFileName('')
-    setCursor(null); setEditBuf(''); setSaved(true)
+    setCursor(null); setEditBuf(''); setSaved(true); setHistory([])
     exitCompare()
   }
 
@@ -138,11 +139,22 @@ export default function BinaryEditorTab() {
 
   // ── Editing ───────────────────────────────────────────────────────────────
 
+  const MAX_HISTORY = 100
+
   function setByte(offset: number, value: number) {
     if (!data) return
+    setHistory(prev => [...prev.slice(-MAX_HISTORY + 1), data])
     const next = new Uint8Array(data)
     next[offset] = value
     setData(next)
+    setSaved(false)
+  }
+
+  function undo() {
+    if (history.length === 0) return
+    const prev = history[history.length - 1]
+    setHistory(h => h.slice(0, -1))
+    setData(prev)
     setSaved(false)
   }
 
@@ -163,7 +175,9 @@ export default function BinaryEditorTab() {
   }, [data, scrollToRow])
 
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (compareMode || cursor === null || !data) return
+    if (compareMode || !data) return
+    if (e.key === 'z' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); undo(); return }
+    if (cursor === null) return
     if ('0123456789ABCDEFabcdef'.includes(e.key)) {
       e.preventDefault()
       const buf = editBuf + e.key.toUpperCase()
@@ -312,9 +326,15 @@ export default function BinaryEditorTab() {
               <button className="btn-ghost text-xs py-0.5 px-2" onClick={jumpToOffset}>Go</button>
             </div>
 
-            <button className="btn-primary text-xs py-1 px-3 ml-auto" onClick={saveFile} disabled={!modified && saved}>
-              Save / Download
-            </button>
+            <div className="flex items-center gap-1.5 ml-auto">
+              <button className="btn-ghost text-xs py-1 px-3" onClick={undo} disabled={history.length === 0}
+                title="Undo last edit (Ctrl+Z)">
+                ↩ Undo {history.length > 0 && `(${history.length})`}
+              </button>
+              <button className="btn-primary text-xs py-1 px-3" onClick={saveFile} disabled={!modified && saved}>
+                Save / Download
+              </button>
+            </div>
           </>
         )}
 
