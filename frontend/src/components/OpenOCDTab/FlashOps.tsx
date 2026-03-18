@@ -17,6 +17,7 @@ export default function FlashOps({ connected, onLog, onFirmwareReady }: Props) {
   const [readSize, setReadSize] = useState('0x10000')
   const [progress, setProgress] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
+  const [confirmChipErase, setConfirmChipErase] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -123,6 +124,29 @@ export default function FlashOps({ connected, onLog, onFirmwareReady }: Props) {
             onClick={() => run('Erase', () => openocd.flash.erase(baseAddress, eraseSize) as Promise<{ ok: boolean; result?: string; error?: string }>)}>
             🗑 Erase
           </button>
+          {!confirmChipErase ? (
+            <button
+              className="btn-ghost col-span-2 text-red-400 border-red-500/30 hover:border-red-500/60"
+              disabled={busy || !connected}
+              onClick={() => setConfirmChipErase(true)}>
+              ⚠ Full Chip Erase
+            </button>
+          ) : (
+            <div className="col-span-2 flex gap-2">
+              <button
+                className="flex-1 btn text-xs py-1 bg-red-700/40 border border-red-600/50 text-red-300 hover:bg-red-700/60"
+                disabled={busy}
+                onClick={() => {
+                  setConfirmChipErase(false)
+                  run('Full Chip Erase', () => openocd.flash.eraseChip() as Promise<{ ok: boolean; result?: string; error?: string }>)
+                }}>
+                Confirm — erase all flash
+              </button>
+              <button className="btn-ghost text-xs py-1 px-3" onClick={() => setConfirmChipErase(false)}>
+                Cancel
+              </button>
+            </div>
+          )}
           <button className="btn-primary col-span-2"
             disabled={busy || !connected || !uploadedFile}
             onClick={() => run('Program', () => openocd.flash.program(uploadedFile, baseAddress, true) as Promise<{ ok: boolean; result?: string; error?: string }>)}>

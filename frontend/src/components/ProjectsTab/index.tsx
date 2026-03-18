@@ -23,6 +23,7 @@ export default function ProjectsTab() {
   const [busyRepos, setBusyRepos] = useState<Set<string>>(new Set())
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [logCollapsed, setLogCollapsed] = useState(false)
+  const [logAutoScroll, setLogAutoScroll] = useState(true)
   const { height: logHeight, onMouseDown: logDragStart } = useResizable(600)
   const logBottomRef = useRef<HTMLDivElement>(null)
   const logContainerRef = useRef<HTMLDivElement>(null)
@@ -67,11 +68,15 @@ export default function ProjectsTab() {
   useWebSocket('/ws/projects', handleWsMessage)
 
   useEffect(() => {
+    if (logAutoScroll) logBottomRef.current?.scrollIntoView({ block: 'end' })
+  }, [logs, logAutoScroll])
+
+  function handleLogScroll() {
     const el = logContainerRef.current
     if (!el) return
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60
-    if (atBottom) logBottomRef.current?.scrollIntoView({ block: 'end' })
-  }, [logs])
+    if (!atBottom && logAutoScroll) setLogAutoScroll(false)
+  }
 
   async function loadRepos() {
     setLoading(true)
@@ -269,6 +274,11 @@ export default function ProjectsTab() {
           <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider flex-1">
             Git Log {logs.length > 0 && `(${logs.length})`}
           </span>
+          <button
+            className={`text-xs px-2 py-0.5 rounded border mr-2 transition-colors ${logAutoScroll ? 'bg-blue-600/20 border-blue-500/40 text-blue-400' : 'border-[#30363d] text-zinc-600 hover:text-zinc-400'}`}
+            onClick={e => { e.stopPropagation(); setLogAutoScroll(v => !v) }}
+            title="Auto-scroll to latest"
+          >↓ Auto</button>
           <button className="text-xs text-zinc-600 hover:text-zinc-400 mr-2"
             onClick={e => { e.stopPropagation(); setLogs([]) }}>
             Clear
@@ -276,7 +286,7 @@ export default function ProjectsTab() {
           <span className="text-zinc-600 text-xs">{logCollapsed ? '▲' : '▼'}</span>
         </div>
         {!logCollapsed && (
-          <div ref={logContainerRef} className="h-[calc(100%-36px)] overflow-y-auto p-2 mono text-xs space-y-0.5">
+          <div ref={logContainerRef} className="h-[calc(100%-36px)] overflow-y-auto p-2 mono text-xs space-y-0.5" onScroll={handleLogScroll}>
             {logs.length === 0 && <div className="text-zinc-700 italic">No git activity yet.</div>}
             {logs.map(l => (
               <div key={l.id} className={`flex gap-2 ${levelColor(l.level)}`}>

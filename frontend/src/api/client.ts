@@ -32,8 +32,9 @@ export const openocd = {
   },
 
   flash: {
-    halt:    ()                                          => req('POST', '/openocd/flash/halt'),
-    erase:   (address: string, size: string)             => req('POST', '/openocd/flash/erase', { address, size }),
+    halt:       ()                                          => req('POST', '/openocd/flash/halt'),
+    eraseChip:  ()                                          => req('POST', '/openocd/flash/erase_chip'),
+    erase:      (address: string, size: string)             => req('POST', '/openocd/flash/erase', { address, size }),
     program: (filename: string, address: string, verify: boolean) =>
       req('POST', '/openocd/flash/program', { filename, address, verify }),
     read:    (address: string, size: string, output_filename: string) =>

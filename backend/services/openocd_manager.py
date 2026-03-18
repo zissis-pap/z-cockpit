@@ -246,6 +246,13 @@ class OpenOCDManager:
         await self.log(f"{cmd} -> {resp}", "info" if "error" not in resp.lower() else "error")
         return resp
 
+    async def flash_erase_chip(self) -> str:
+        """Erase the entire flash device (all banks)."""
+        await self.send_command("halt")
+        resp = await self.send_command("flash erase_device 0", timeout=120.0)
+        await self.log(f"flash erase_device 0 -> {resp}", "info" if "error" not in resp.lower() else "error")
+        return resp
+
     async def flash_program(self, filename: str, address: str, verify: bool = True) -> str:
         verify_flag = " verify" if verify else ""
         # No "exit" — keeps OpenOCD running so the session stays alive after programming

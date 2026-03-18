@@ -136,6 +136,12 @@ async def flash_erase(req: FlashEraseRequest):
     return {"ok": "error" not in result.lower(), "result": result}
 
 
+@router.post("/flash/erase_chip")
+async def flash_erase_chip():
+    result = await openocd_manager.flash_erase_chip()
+    return {"ok": "error" not in result.lower(), "result": result}
+
+
 @router.post("/flash/program")
 async def flash_program(req: FlashProgramRequest):
     path = openocd_manager.upload_dir / req.filename
