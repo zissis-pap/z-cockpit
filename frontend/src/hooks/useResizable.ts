@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 
-export function useResizable(initialHeight: number, min = 80, max = 600) {
+export function useResizable(initialHeight: number, min = 80, max = 4000) {
   const [height, setHeight] = useState(initialHeight)
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {

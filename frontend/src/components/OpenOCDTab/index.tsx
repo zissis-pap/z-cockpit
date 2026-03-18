@@ -37,7 +37,7 @@ export default function OpenOCDTab() {
     prevConnected.current = status.connected
   }, [status.connected])
   const [logCollapsed, setLogCollapsed] = useState(false)
-  const { height: logHeight, onMouseDown: logDragStart } = useResizable(600)
+  const { height: logHeight, onMouseDown: logDragStart } = useResizable(Math.round(window.innerHeight * 0.25))
 
   const addLog = useCallback((text: string, level = 'info') => {
     const ts = new Date().toLocaleTimeString('en-US', { hour12: false })

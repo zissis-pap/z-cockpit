@@ -24,7 +24,7 @@ export default function ProjectsTab() {
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [logCollapsed, setLogCollapsed] = useState(false)
   const [logAutoScroll, setLogAutoScroll] = useState(true)
-  const { height: logHeight, onMouseDown: logDragStart } = useResizable(600)
+  const { height: logHeight, onMouseDown: logDragStart } = useResizable(Math.round(window.innerHeight * 0.25))
   const logBottomRef = useRef<HTMLDivElement>(null)
   const logContainerRef = useRef<HTMLDivElement>(null)
 

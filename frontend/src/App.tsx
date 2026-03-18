@@ -87,7 +87,7 @@ export default function App() {
 
       {/* Content */}
       <main className="flex-1 overflow-hidden">
-        {activeTab === 'projects'  && <ProjectsTab />}
+        <div className={activeTab === 'projects' ? 'h-full' : 'hidden'}><ProjectsTab /></div>
         <div className={activeTab === 'openocd' ? 'h-full' : 'hidden'}><OpenOCDTab /></div>
         <div className={activeTab === 'serial' ? 'h-full' : 'hidden'}><SerialTab /></div>
         <div className={activeTab === 'converter' ? 'h-full' : 'hidden'}><ConverterTab /></div>
