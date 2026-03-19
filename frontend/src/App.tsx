@@ -6,12 +6,14 @@ import ConverterTab    from './components/ConverterTab'
 import BinaryEditorTab from './components/BinaryEditorTab'
 import SettingsTab  from './components/SettingsTab'
 import AboutTab     from './components/AboutTab'
+import ToolsTab     from './components/ToolsTab'
 
 function IconGit()      { return <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M6 9v12"/></svg> }
 function IconCpu()      { return <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/></svg> }
 function IconCable()    { return <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a1 1 0 0 1-1-1v-1a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1a1 1 0 0 1-1 1v2"/><path d="M19 15V6.5a3.5 3.5 0 0 0-7 0v11a3.5 3.5 0 0 1-7 0V9"/><path d="M7 9V7a1 1 0 0 1 1-1V4"/><path d="M5 3h4"/><path d="M21 19h-4"/></svg> }
 function IconConvert()  { return <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M7 16V4m0 0L3 8m4-4 4 4"/><path d="M17 8v12m0 0 4-4m-4 4-4-4"/></svg> }
 function IconBinary()   { return <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/><path d="M7 6h.01M5 6h.01"/></svg> }
+function IconTools()    { return <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg> }
 function IconSettings() { return <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M8.46 8.46a5 5 0 0 0 0 7.07"/></svg> }
 function IconInfo()     { return <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg> }
 function IconMenu()     { return <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg> }
@@ -22,6 +24,7 @@ const MAIN_TABS = [
   { id: 'serial',    label: 'Serial Terminal',  Icon: IconCable },
   { id: 'converter', label: 'Converter',        Icon: IconConvert },
   { id: 'binary',    label: 'Binary Editor',   Icon: IconBinary },
+  { id: 'tools',     label: 'Tools',           Icon: IconTools },
 ] as const
 
 const BOTTOM_TABS = [
@@ -92,6 +95,7 @@ export default function App() {
         <div className={activeTab === 'serial' ? 'h-full' : 'hidden'}><SerialTab /></div>
         <div className={activeTab === 'converter' ? 'h-full' : 'hidden'}><ConverterTab /></div>
         <div className={activeTab === 'binary' ? 'h-full' : 'hidden'}><BinaryEditorTab /></div>
+        <div className={activeTab === 'tools' ? 'h-full' : 'hidden'}><ToolsTab /></div>
         {activeTab === 'settings'  && <SettingsTab />}
         {activeTab === 'about'     && <AboutTab />}
       </main>

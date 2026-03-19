@@ -93,3 +93,11 @@ export const serial = {
   logStart:   (path: string) => req<{ ok: boolean; path?: string; error?: string }>('POST', '/serial/log/start', { path }),
   logStop:    ()             => req<{ ok: boolean; path?: string }>('POST', '/serial/log/stop'),
 }
+
+// ── Tools ─────────────────────────────────────────────────────────────────────
+
+export const tools = {
+  networkInterfaces: () => req<{ interfaces: Array<{ interface: string; ip: string; prefix: number; broadcast: string }>; client_ip: string }>('GET', '/tools/network/interfaces'),
+  scanNetwork:       (subnet: string) => req<{ hosts: Array<{ ip: string; hostname: string; mac: string }>; count: number }>('POST', '/tools/network/scan', { subnet }),
+  captureInterfaces: () => req<{ interfaces: string[] }>('GET', '/tools/network/capture-interfaces'),
+}

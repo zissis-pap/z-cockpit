@@ -13,6 +13,7 @@ from backend.routers.openocd import router as openocd_router, ws_router as openo
 from backend.routers.serial_port import router as serial_router, ws_router as serial_ws
 from backend.routers.settings import router as settings_router
 from backend.routers.projects import router as projects_router, ws_router as projects_ws
+from backend.routers.tools import router as tools_router, ws_router as tools_ws
 
 app = FastAPI(title="Z-Cockpit", version="0.1.0")
 
@@ -41,6 +42,8 @@ app.include_router(serial_ws)
 app.include_router(settings_router)
 app.include_router(projects_router)
 app.include_router(projects_ws)
+app.include_router(tools_router)
+app.include_router(tools_ws)
 
 # Serve built React frontend (production mode)
 STATIC_DIR = Path(__file__).parent / "static"
