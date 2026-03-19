@@ -102,7 +102,9 @@ export const mqtt = {
   brokers:          () => req<{ brokers: MqttBroker[] }>('GET', '/mqtt/brokers'),
   addBroker:        (body: { name?: string; host: string; port: number; username?: string; password?: string }) =>
     req<{ ok: boolean; broker?: MqttBroker; error?: string }>('POST', '/mqtt/brokers', body),
-  removeBroker:     (id: string) => req<{ ok: boolean }>('DELETE', `/mqtt/brokers/${id}`),
+  removeBroker:      (id: string) => req<{ ok: boolean }>('DELETE', `/mqtt/brokers/${id}`),
+  connectBroker:     (id: string) => req<{ ok: boolean; error?: string }>('POST', `/mqtt/brokers/${id}/connect`),
+  disconnectBroker:  (id: string) => req<{ ok: boolean }>('POST', `/mqtt/brokers/${id}/disconnect`),
   subscribeTopic:   (id: string, topic: string) =>
     req<{ ok: boolean; error?: string }>('POST', `/mqtt/brokers/${id}/topics`, { topic }),
   unsubscribeTopic: (id: string, topic: string) =>

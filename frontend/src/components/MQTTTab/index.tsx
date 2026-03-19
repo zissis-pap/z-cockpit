@@ -14,12 +14,13 @@ interface MqttMessage {
 }
 
 interface SavedBroker {
-  name:     string
-  host:     string
-  port:     number
-  username: string
-  password: string
-  topics:   string[]
+  name:      string
+  host:      string
+  port:      number
+  username:  string
+  password:  string
+  topics:    string[]
+  autoConnect: boolean
 }
 
 // ── localStorage persistence ──────────────────────────────────────────────────
@@ -33,12 +34,13 @@ function loadSaved(): SavedBroker[] {
 
 function saveBrokers(brokers: MqttBroker[], passwords: Record<string, string>) {
   const saved: SavedBroker[] = brokers.map(b => ({
-    name:     b.name,
-    host:     b.host,
-    port:     b.port,
-    username: b.username ?? '',
-    password: passwords[b.id] ?? '',
-    topics:   b.topics,
+    name:        b.name,
+    host:        b.host,
+    port:        b.port,
+    username:    b.username ?? '',
+    password:    passwords[b.id] ?? '',
+    topics:      b.topics,
+    autoConnect: b.connected,
   }))
   localStorage.setItem(STORAGE_KEY, JSON.stringify(saved))
 }
@@ -264,12 +266,14 @@ function MessageRow({ msg, brokerName, selected, onClick }: {
 
 // ── Broker Panel ──────────────────────────────────────────────────────────────
 
-function BrokerPanel({ brokers, onAdd, onRemove, onSubscribe, onUnsubscribe }: {
-  brokers:       MqttBroker[]
-  onAdd:         (name: string, host: string, port: number, user: string, pass: string) => Promise<void>
-  onRemove:      (id: string) => Promise<void>
-  onSubscribe:   (id: string, topic: string) => Promise<void>
-  onUnsubscribe: (id: string, topic: string) => Promise<void>
+function BrokerPanel({ brokers, onAdd, onRemove, onConnect, onDisconnect, onSubscribe, onUnsubscribe }: {
+  brokers:        MqttBroker[]
+  onAdd:          (name: string, host: string, port: number, user: string, pass: string) => Promise<void>
+  onRemove:       (id: string) => Promise<void>
+  onConnect:      (id: string) => Promise<void>
+  onDisconnect:   (id: string) => Promise<void>
+  onSubscribe:    (id: string, topic: string) => Promise<void>
+  onUnsubscribe:  (id: string, topic: string) => Promise<void>
 }) {
   const [name, setName]         = useState('')
   const [host, setHost]         = useState('localhost')
@@ -349,18 +353,36 @@ function BrokerPanel({ brokers, onAdd, onRemove, onSubscribe, onUnsubscribe }: {
         <div className="text-xs text-zinc-600 italic px-1">No brokers connected yet.</div>
       ) : brokers.map(broker => (
         <div key={broker.id} className="panel shrink-0">
-          <div className="panel-header flex items-center justify-between">
+          <div className="panel-header flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <span className={`w-2 h-2 rounded-full shrink-0 ${
-                broker.connected ? 'bg-green-400' : broker.error ? 'bg-red-400 animate-pulse' : 'bg-yellow-400 animate-pulse'
+                broker.connected ? 'bg-green-400' : broker.error ? 'bg-red-400 animate-pulse' : 'bg-zinc-600'
               }`} />
               <div className="min-w-0">
                 <div className="text-sm font-medium truncate">{broker.name}</div>
                 <div className="mono text-[10px] text-zinc-500 truncate">{broker.host}:{broker.port}</div>
               </div>
             </div>
-            <button className="btn-ghost text-xs px-1.5 py-0.5 text-red-400 border-red-500/30 hover:border-red-400 shrink-0"
-              onClick={() => onRemove(broker.id)}>✕</button>
+            <div className="flex items-center gap-1 shrink-0">
+              {broker.connected ? (
+                <button
+                  className="btn-ghost text-xs px-2 py-0.5 text-amber-400 border-amber-500/30 hover:border-amber-400"
+                  onClick={() => onDisconnect(broker.id)}
+                  title="Disconnect"
+                >⏏</button>
+              ) : (
+                <button
+                  className="btn-ghost text-xs px-2 py-0.5 text-green-400 border-green-500/30 hover:border-green-400"
+                  onClick={() => onConnect(broker.id)}
+                  title="Connect"
+                >▶</button>
+              )}
+              <button
+                className="btn-ghost text-xs px-1.5 py-0.5 text-red-400 border-red-500/30 hover:border-red-400"
+                onClick={() => onRemove(broker.id)}
+                title="Remove broker"
+              >✕</button>
+            </div>
           </div>
           <div className="p-3 space-y-2">
             {broker.error && (
@@ -530,11 +552,12 @@ export default function MQTTTab() {
     if (saved.length === 0) return
 
     for (const s of saved) {
-      // Skip if already connected (match by host+port+name)
+      // Skip if already present (match by host+port+name)
       const already = currentBrokers.find(b => b.host === s.host && b.port === s.port && b.name === s.name)
       if (already) continue
 
       try {
+        // Add broker — backend will attempt connection only if autoConnect was true
         const res = await mqtt.addBroker({
           name: s.name, host: s.host, port: s.port,
           username: s.username || undefined,
@@ -548,6 +571,11 @@ export default function MQTTTab() {
           // Restore topics
           for (const topic of s.topics) {
             await mqtt.subscribeTopic(broker.id, topic)
+          }
+
+          // Disconnect immediately if it was saved as disconnected
+          if (!s.autoConnect) {
+            await mqtt.disconnectBroker(broker.id)
           }
         }
       } catch { /* ignore reconnect errors */ }
@@ -621,6 +649,14 @@ export default function MQTTTab() {
     }
   }
 
+  async function handleConnect(id: string) {
+    await mqtt.connectBroker(id)
+  }
+
+  async function handleDisconnect(id: string) {
+    await mqtt.disconnectBroker(id)
+  }
+
   async function handleRemove(id: string) {
     await mqtt.removeBroker(id)
     delete passwordsRef.current[id]
@@ -650,6 +686,8 @@ export default function MQTTTab() {
           brokers={brokers}
           onAdd={handleAdd}
           onRemove={handleRemove}
+          onConnect={handleConnect}
+          onDisconnect={handleDisconnect}
           onSubscribe={handleSubscribe}
           onUnsubscribe={handleUnsubscribe}
         />

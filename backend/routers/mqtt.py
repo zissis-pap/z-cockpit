@@ -52,6 +52,16 @@ async def remove_broker(broker_id: str):
     return await mqtt_manager.remove_broker(broker_id)
 
 
+@router.post("/brokers/{broker_id}/connect")
+async def connect_broker(broker_id: str):
+    return await mqtt_manager.connect_broker(broker_id)
+
+
+@router.post("/brokers/{broker_id}/disconnect")
+async def disconnect_broker(broker_id: str):
+    return await mqtt_manager.disconnect_broker(broker_id)
+
+
 # ── Topics ─────────────────────────────────────────────────────────────────────
 
 class TopicRequest(BaseModel):

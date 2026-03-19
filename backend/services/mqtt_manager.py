@@ -97,6 +97,36 @@ class MQTTManager:
         if broker_id not in self._brokers:
             return {"ok": False, "error": "Broker not found"}
 
+        await self._stop_task(broker_id)
+        self._brokers.pop(broker_id)
+
+        await self.broadcast({"type": "broker_removed", "broker_id": broker_id})
+        return {"ok": True}
+
+    async def connect_broker(self, broker_id: str) -> dict:
+        broker = self._brokers.get(broker_id)
+        if not broker:
+            return {"ok": False, "error": "Broker not found"}
+        if broker.connected:
+            return {"ok": True}
+
+        await self._stop_task(broker_id)
+        task = asyncio.create_task(self._run_broker(broker))
+        self._tasks[broker_id] = task
+        return {"ok": True}
+
+    async def disconnect_broker(self, broker_id: str) -> dict:
+        broker = self._brokers.get(broker_id)
+        if not broker:
+            return {"ok": False, "error": "Broker not found"}
+
+        await self._stop_task(broker_id)
+        broker.connected = False
+        broker.error = None
+        await self.broadcast({"type": "broker_updated", "broker": broker.to_dict()})
+        return {"ok": True}
+
+    async def _stop_task(self, broker_id: str):
         task = self._tasks.pop(broker_id, None)
         if task:
             task.cancel()
@@ -104,12 +134,7 @@ class MQTTManager:
                 await asyncio.wait_for(asyncio.shield(task), timeout=2.0)
             except Exception:
                 pass
-
         self._clients.pop(broker_id, None)
-        self._brokers.pop(broker_id)
-
-        await self.broadcast({"type": "broker_removed", "broker_id": broker_id})
-        return {"ok": True}
 
     async def subscribe_topic(self, broker_id: str, topic: str) -> dict:
         broker = self._brokers.get(broker_id)
