@@ -27,6 +27,7 @@ class SerialManager:
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._log_file: Optional[object] = None   # open file handle
         self._log_path: str = ""
+        self._rx_listeners: list = []  # asyncio.Queue instances for script runner
 
     # ──────────────────────────────────────────────────────────────────────────
     # WebSocket management
@@ -37,6 +38,15 @@ class SerialManager:
 
     def remove_client(self, ws: WebSocket):
         self.ws_clients.discard(ws)
+
+    def add_rx_listener(self, queue):
+        self._rx_listeners.append(queue)
+
+    def remove_rx_listener(self, queue):
+        try:
+            self._rx_listeners.remove(queue)
+        except ValueError:
+            pass
 
     async def broadcast(self, msg: dict):
         dead = set()
@@ -211,6 +221,13 @@ class SerialManager:
             "text": text,
             "raw": list(data),
         })
+        # Feed script runner rx listeners
+        if text:
+            for q in list(self._rx_listeners):
+                try:
+                    q.put_nowait(text)
+                except Exception:
+                    pass
 
 
 serial_manager = SerialManager()

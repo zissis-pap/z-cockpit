@@ -94,8 +94,6 @@ export const serial = {
   logStop:    ()             => req<{ ok: boolean; path?: string }>('POST', '/serial/log/stop'),
 }
 
-// ── Tools ─────────────────────────────────────────────────────────────────────
-
 // ── MQTT ──────────────────────────────────────────────────────────────────────
 
 export const mqtt = {
@@ -123,6 +121,32 @@ export interface MqttBroker {
   connected: boolean
   error:     string | null
 }
+
+// ── Scripts ───────────────────────────────────────────────────────────────────
+
+export interface ScriptMeta {
+  id: number
+  name: string
+  file_keys: string[]
+}
+
+export interface Script {
+  id: number
+  name: string
+  src: string
+  files: Record<string, string>
+}
+
+export const scripts = {
+  list:   ()                          => req<{ ok: boolean; scripts: ScriptMeta[] }>('GET', '/scripts'),
+  get:    (id: number)                => req<{ ok: boolean; script: Script }>('GET', `/scripts/${id}`),
+  upsert: (s: Script)                 => req<{ ok: boolean; script: Script }>('POST', '/scripts', s),
+  delete: (id: number)                => req<{ ok: boolean }>('DELETE', `/scripts/${id}`),
+  run:    (id: number)                => req<{ ok: boolean }>('POST', `/scripts/${id}/run`),
+  stop:   ()                          => req<{ ok: boolean }>('POST', '/scripts/stop'),
+}
+
+// ── Tools ─────────────────────────────────────────────────────────────────────
 
 export const tools = {
   networkInterfaces: () => req<{ interfaces: Array<{ interface: string; ip: string; prefix: number; broadcast: string }>; client_ip: string }>('GET', '/tools/network/interfaces'),

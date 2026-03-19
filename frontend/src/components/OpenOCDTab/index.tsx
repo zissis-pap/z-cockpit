@@ -4,15 +4,17 @@ import MCUSelector from './MCUSelector'
 import FlashOps from './FlashOps'
 import MemoryViewer from './MemoryViewer'
 import ScriptConsole from './ScriptConsole'
+import ScriptRunner from './ScriptRunner'
 import LogViewer from './LogViewer'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { useResizable } from '../../hooks/useResizable'
 import type { OpenOCDStatus, LogEntry, MemoryRow } from '../../types'
 
 const RIGHT_TABS = [
-  { id: 'flash',  label: 'Flash Ops' },
-  { id: 'memory', label: 'Memory' },
-  { id: 'script', label: 'Script Console' },
+  { id: 'flash',   label: 'Flash Ops' },
+  { id: 'memory',  label: 'Memory' },
+  { id: 'scripts', label: 'Scripts' },
+  { id: 'console', label: 'TCL Console' },
 ] as const
 
 type RightTabId = typeof RIGHT_TABS[number]['id']
@@ -104,9 +106,10 @@ export default function OpenOCDTab() {
 
           {/* Tab content — always mounted, shown/hidden via CSS to preserve state */}
           <div className="flex-1 overflow-y-auto min-h-0 pr-0.5">
-            <div className={rightTab === 'flash'  ? '' : 'hidden'}><FlashOps connected={status.connected} onLog={addLog} onFirmwareReady={(_, data, base) => { setFirmwareData(data); setFirmwareBaseAddr(base) }} /></div>
-            <div className={rightTab === 'memory' ? '' : 'hidden'}><MemoryViewer connected={status.connected} rows={memoryRows} onRows={setMemoryRows} onLog={addLog} firmwareData={firmwareData} firmwareBaseAddr={firmwareBaseAddr} /></div>
-            <div className={rightTab === 'script' ? 'flex flex-col h-full' : 'hidden'}><ScriptConsole connected={status.connected} /></div>
+            <div className={rightTab === 'flash'   ? '' : 'hidden'}><FlashOps connected={status.connected} onLog={addLog} onFirmwareReady={(_, data, base) => { setFirmwareData(data); setFirmwareBaseAddr(base) }} /></div>
+            <div className={rightTab === 'memory'  ? '' : 'hidden'}><MemoryViewer connected={status.connected} rows={memoryRows} onRows={setMemoryRows} onLog={addLog} firmwareData={firmwareData} firmwareBaseAddr={firmwareBaseAddr} /></div>
+            <div className={rightTab === 'scripts' ? 'flex flex-col h-full' : 'hidden'}><ScriptRunner /></div>
+            <div className={rightTab === 'console' ? 'flex flex-col h-full' : 'hidden'}><ScriptConsole connected={status.connected} /></div>
           </div>
         </div>
       </div>

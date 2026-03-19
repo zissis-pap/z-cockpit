@@ -1,0 +1,26 @@
+[
+  {
+    "id": 1772205420710,
+    "name": "demo",
+    "src": "[\n  {\n    \"type\": \"openocd_start\",\n    \"interface\": \"interface/stlink.cfg\",\n    \"target\": \"target/stm32l4x.cfg\"\n  },\n  {\n    \"type\": \"uart_connect\",\n    \"port\": \"/dev/ttyACM0\",\n    \"baud_rate\": 115200\n  },\n  {\n    \"type\": \"halt\"\n  },\n  {\n    \"type\": \"flash\",\n    \"file_key\": \"firmware.bin\",\n    \"address\": \"0x08000000\",\n    \"verify\": true,\n    \"do_reset\": false\n  },\n  {\n    \"type\": \"delay\",\n    \"seconds\": 1\n  },\n  {\n    \"type\": \"uart_wait\",\n    \"pattern\": \"boot ok\",\n    \"timeout\": 10\n  },\n  {\n    \"type\": \"resume\"\n  }\n]",
+    "files": {}
+  },
+  {
+    "id": 1772205420711,
+    "name": "flash from path",
+    "src": "[\n  {\n    \"type\": \"openocd_start\",\n    \"interface\": \"interface/stlink.cfg\",\n    \"target\": \"target/stm32f4x.cfg\"\n  },\n  {\n    \"type\": \"halt\"\n  },\n  {\n    \"type\": \"flash\",\n    \"file_path\": \"/home/user/build/firmware.bin\",\n    \"address\": \"0x08000000\",\n    \"verify\": true,\n    \"do_reset\": true\n  },\n  {\n    \"type\": \"log\",\n    \"message\": \"Flash complete\"\n  }\n]",
+    "files": {}
+  },
+  {
+    "id": 1772205420712,
+    "name": "provision device",
+    "src": "[\n  {\n    \"type\": \"openocd_start\",\n    \"interface\": \"interface/stlink.cfg\",\n    \"target\": \"target/stm32l4x.cfg\"\n  },\n  {\n    \"type\": \"uart_connect\",\n    \"port\": \"/dev/ttyACM0\",\n    \"baud_rate\": 115200\n  },\n  {\n    \"type\": \"halt\"\n  },\n  {\n    \"type\": \"flash\",\n    \"file_key\": \"firmware.bin\",\n    \"address\": \"0x08000000\",\n    \"verify\": true,\n    \"do_reset\": false\n  },\n  {\n    \"type\": \"delay\",\n    \"seconds\": 1\n  },\n  {\n    \"type\": \"uart_wait\",\n    \"pattern\": \"boot ok\",\n    \"timeout\": 15\n  },\n  {\n    \"type\": \"exec\",\n    \"command\": \"openssl rand -hex 16\",\n    \"save_as\": \"enc_key\"\n  },\n  {\n    \"type\": \"uart_send\",\n    \"data\": \"SETKEY:{enc_key}\\n\"\n  },\n  {\n    \"type\": \"uart_wait\",\n    \"pattern\": \"KEY OK\",\n    \"timeout\": 5\n  },\n  {\n    \"type\": \"uart_extract\",\n    \"pattern\": \"SN=([A-F0-9]+)\",\n    \"save_as\": \"serial\"\n  },\n  {\n    \"type\": \"log\",\n    \"message\": \"Device serial: {serial} provisioned with key {enc_key}\"\n  },\n  {\n    \"type\": \"resume\"\n  }\n]",
+    "files": {}
+  },
+  {
+    "id": 1772205420713,
+    "name": "erase + flash",
+    "src": "[\n  {\n    \"type\": \"openocd_start\",\n    \"interface\": \"interface/stlink.cfg\",\n    \"target\": \"target/stm32l4x.cfg\"\n  },\n  {\n    \"type\": \"halt\"\n  },\n  {\n    \"type\": \"erase\"\n  },\n  {\n    \"type\": \"flash\",\n    \"file_key\": \"firmware.bin\",\n    \"address\": \"0x08000000\",\n    \"verify\": true,\n    \"do_reset\": true\n  },\n  {\n    \"type\": \"log\",\n    \"message\": \"Erase + flash complete\"\n  }\n]",
+    "files": {}
+  }
+]
