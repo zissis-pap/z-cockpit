@@ -96,6 +96,31 @@ export const serial = {
 
 // ── Tools ─────────────────────────────────────────────────────────────────────
 
+// ── MQTT ──────────────────────────────────────────────────────────────────────
+
+export const mqtt = {
+  brokers:          () => req<{ brokers: MqttBroker[] }>('GET', '/mqtt/brokers'),
+  addBroker:        (body: { host: string; port: number; username?: string; password?: string }) =>
+    req<{ ok: boolean; broker?: MqttBroker; error?: string }>('POST', '/mqtt/brokers', body),
+  removeBroker:     (id: string) => req<{ ok: boolean }>('DELETE', `/mqtt/brokers/${id}`),
+  subscribeTopic:   (id: string, topic: string) =>
+    req<{ ok: boolean; error?: string }>('POST', `/mqtt/brokers/${id}/topics`, { topic }),
+  unsubscribeTopic: (id: string, topic: string) =>
+    req<{ ok: boolean }>('DELETE', `/mqtt/brokers/${id}/topics/${encodeURIComponent(topic)}`),
+  publish:          (id: string, topic: string, payload: string) =>
+    req<{ ok: boolean; error?: string }>('POST', `/mqtt/brokers/${id}/publish`, { topic, payload }),
+}
+
+export interface MqttBroker {
+  id:        string
+  host:      string
+  port:      number
+  username:  string | null
+  topics:    string[]
+  connected: boolean
+  error:     string | null
+}
+
 export const tools = {
   networkInterfaces: () => req<{ interfaces: Array<{ interface: string; ip: string; prefix: number; broadcast: string }>; client_ip: string }>('GET', '/tools/network/interfaces'),
   scanNetwork:       (subnet: string) => req<{ hosts: Array<{ ip: string; hostname: string; mac: string }>; count: number }>('POST', '/tools/network/scan', { subnet }),
