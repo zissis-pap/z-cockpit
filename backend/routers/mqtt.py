@@ -35,6 +35,7 @@ async def list_brokers():
 
 
 class AddBrokerRequest(BaseModel):
+    name:     str         = ''
     host:     str
     port:     int         = 1883
     username: str | None  = None
@@ -43,7 +44,7 @@ class AddBrokerRequest(BaseModel):
 
 @router.post("/brokers")
 async def add_broker(req: AddBrokerRequest):
-    return await mqtt_manager.add_broker(req.host, req.port, req.username, req.password)
+    return await mqtt_manager.add_broker(req.name, req.host, req.port, req.username, req.password)
 
 
 @router.delete("/brokers/{broker_id}")

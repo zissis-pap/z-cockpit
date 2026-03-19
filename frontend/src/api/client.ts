@@ -100,7 +100,7 @@ export const serial = {
 
 export const mqtt = {
   brokers:          () => req<{ brokers: MqttBroker[] }>('GET', '/mqtt/brokers'),
-  addBroker:        (body: { host: string; port: number; username?: string; password?: string }) =>
+  addBroker:        (body: { name?: string; host: string; port: number; username?: string; password?: string }) =>
     req<{ ok: boolean; broker?: MqttBroker; error?: string }>('POST', '/mqtt/brokers', body),
   removeBroker:     (id: string) => req<{ ok: boolean }>('DELETE', `/mqtt/brokers/${id}`),
   subscribeTopic:   (id: string, topic: string) =>
@@ -113,6 +113,7 @@ export const mqtt = {
 
 export interface MqttBroker {
   id:        string
+  name:      string
   host:      string
   port:      number
   username:  string | null

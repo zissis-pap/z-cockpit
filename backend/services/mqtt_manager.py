@@ -18,6 +18,7 @@ except ImportError:
 @dataclass
 class BrokerConfig:
     id: str
+    name: str
     host: str
     port: int
     username: str | None
@@ -29,6 +30,7 @@ class BrokerConfig:
     def to_dict(self) -> dict:
         return {
             "id":        self.id,
+            "name":      self.name,
             "host":      self.host,
             "port":      self.port,
             "username":  self.username,
@@ -69,6 +71,7 @@ class MQTTManager:
 
     async def add_broker(
         self,
+        name: str,
         host: str,
         port: int,
         username: str | None,
@@ -79,7 +82,8 @@ class MQTTManager:
 
         broker_id = str(uuid.uuid4())[:8]
         broker = BrokerConfig(
-            id=broker_id, host=host, port=port,
+            id=broker_id, name=name or f"{host}:{port}",
+            host=host, port=port,
             username=username or None, password=password or None,
         )
         self._brokers[broker_id] = broker
