@@ -133,8 +133,64 @@ export default function ProjectsTab() {
     behind:  repos.filter(r => r.status === 'behind' || r.status === 'diverged').length,
   }
 
-  const levelColor = (l: string) =>
-    l === 'error' ? 'text-red-400' : l === 'warn' ? 'text-amber-400' : 'text-zinc-400'
+  function renderLogLine(text: string, level: string) {
+    // op_start: "▶ clone owner/repo"
+    if (text.startsWith('▶')) {
+      const op = text.includes('clone')  ? { cls: 'text-blue-400',   label: '▶ clone'  } :
+                 text.includes('pull')   ? { cls: 'text-purple-400', label: '▶ pull'   } :
+                 text.includes('fetch')  ? { cls: 'text-cyan-400',   label: '▶ fetch'  } :
+                 text.includes('commit') ? { cls: 'text-green-400',  label: '▶ commit' } :
+                 text.includes('delete') ? { cls: 'text-red-400',    label: '▶ delete' } :
+                                           { cls: 'text-zinc-300',   label: '▶'        }
+      const rest = text.slice(op.label.length)
+      return (
+        <>
+          <span className={`font-semibold ${op.cls}`}>{op.label}</span>
+          <span className="text-zinc-400">{rest}</span>
+        </>
+      )
+    }
+
+    // op_done: "✓ pull owner/repo" or "✗ pull owner/repo"
+    if (text.startsWith('✓') || text.startsWith('✗')) {
+      const ok  = text.startsWith('✓')
+      const cls = ok ? 'text-green-400' : 'text-red-400'
+      return <span className={`font-semibold ${cls}`}>{text}</span>
+    }
+
+    // error / warn by level
+    if (level === 'error') return <span className="text-red-400">{text}</span>
+    if (level === 'warn')  return <span className="text-amber-400">{text}</span>
+
+    // Regular git output line — may start with "[account/repo] message"
+    const repoMatch = text.match(/^(\[[^\]]+\])\s?(.*)$/)
+    if (repoMatch) {
+      const [, tag, rest] = repoMatch
+      const body = rest
+
+      // Colour the body based on known git output patterns
+      const bodyCls =
+        /error|fatal/i.test(body)                           ? 'text-red-400'     :
+        /warning/i.test(body)                               ? 'text-amber-400'   :
+        /already up.to.date/i.test(body)                    ? 'text-green-300'   :
+        /fast.forward|updating [0-9a-f]+\.\.[0-9a-f]+/i.test(body) ? 'text-purple-300' :
+        /^remote:/.test(body)                               ? 'text-zinc-500'    :
+        /^From https?:\/\//i.test(body)                     ? 'text-cyan-400'    :
+        /\d+ file.* changed/i.test(body)                    ? 'text-green-300'   :
+        /create mode|delete mode/i.test(body)               ? 'text-amber-300'   :
+        'text-zinc-400'
+
+      return (
+        <>
+          <span className="text-blue-400/70 shrink-0">{tag}</span>
+          {' '}
+          <span className={bodyCls}>{body}</span>
+        </>
+      )
+    }
+
+    return <span className="text-zinc-400">{text}</span>
+  }
 
   // Group filtered repos by platform → account_id
   const grouped = (() => {
@@ -289,9 +345,9 @@ export default function ProjectsTab() {
           <div ref={logContainerRef} className="h-[calc(100%-36px)] overflow-y-auto p-2 mono text-xs space-y-0.5" onScroll={handleLogScroll}>
             {logs.length === 0 && <div className="text-zinc-700 italic">No git activity yet.</div>}
             {logs.map(l => (
-              <div key={l.id} className={`flex gap-2 ${levelColor(l.level)}`}>
+              <div key={l.id} className="flex gap-2 leading-5">
                 <span className="text-zinc-700 shrink-0">{l.timestamp}</span>
-                <span className="break-all">{l.text}</span>
+                <span className="break-all min-w-0">{renderLogLine(l.text, l.level)}</span>
               </div>
             ))}
             <div ref={logBottomRef} />
