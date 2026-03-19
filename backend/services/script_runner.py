@@ -1,5 +1,6 @@
 """
 Script runner — executes JSON step-based scripts against OpenOCD / Serial.
+Supports both local managers and remote z-cockpit agents.
 """
 import asyncio
 import base64
@@ -12,6 +13,8 @@ from fastapi import WebSocket
 
 from backend.services.openocd_manager import openocd_manager
 from backend.services.serial_manager import serial_manager
+from backend.services.remotes_manager import remotes_manager
+from backend.services.remote_client import RemoteClient
 
 SCRIPTS_FILE = Path(__file__).parent.parent.parent / "config" / "scripts.json"
 
@@ -101,7 +104,7 @@ class ScriptRunner:
     def running(self) -> bool:
         return self._running
 
-    async def run(self, script_id: int):
+    async def run(self, script_id: int, remote_id: Optional[str] = None):
         if self._running:
             await self.broadcast({"type": "error", "message": "A script is already running"})
             return
@@ -118,10 +121,26 @@ class ScriptRunner:
             return
 
         files = script.get("files", {})
+
+        # Resolve remote client (None = local)
+        remote: Optional[RemoteClient] = None
+        if remote_id:
+            cfg = remotes_manager.get(remote_id)
+            if not cfg:
+                await self.broadcast({"type": "error", "message": f"Remote '{remote_id}' not found"})
+                return
+            remote = RemoteClient(cfg["host"], cfg["port"], cfg.get("token", ""))
+
         self._running = True
         self._stop_flag = False
 
-        await self.broadcast({"type": "start", "script_id": script_id, "step_count": len(steps)})
+        target_label = cfg["name"] if remote_id and cfg else "local"
+        await self.broadcast({
+            "type": "start",
+            "script_id": script_id,
+            "step_count": len(steps),
+            "target": target_label,
+        })
 
         ctx: dict = {}
         try:
@@ -134,7 +153,7 @@ class ScriptRunner:
                 await self.broadcast({"type": "step_start", "index": i})
 
                 try:
-                    result = await self._execute_step(step, files, ctx)
+                    result = await self._execute_step(step, files, ctx, remote)
                     if step.get("save_as"):
                         ctx[step["save_as"]] = result or ""
                     await self.broadcast({
@@ -153,8 +172,11 @@ class ScriptRunner:
         finally:
             self._running = False
             self._stop_flag = False
+            if remote:
+                await remote.close()
 
-    async def _execute_step(self, step: dict, files: dict, ctx: dict) -> Optional[str]:
+    async def _execute_step(self, step: dict, files: dict, ctx: dict,
+                            remote: Optional[RemoteClient] = None) -> Optional[str]:
         t = step.get("type", "")
 
         # ── set_var ──────────────────────────────────────────────────────────
@@ -181,113 +203,147 @@ class ScriptRunner:
         # ── openocd_start ────────────────────────────────────────────────────
         if t == "openocd_start":
             iface = step.get("interface", "interface/stlink.cfg")
-            target = step.get("target", "")
-            if openocd_manager.server_status != "running":
-                result = await openocd_manager.start({
-                    "executable": "openocd",
-                    "interface_config": iface,
-                    "target_config": target,
-                })
-                if not result.get("ok"):
-                    raise RuntimeError(result.get("error", "Failed to start OpenOCD"))
-                # Give process a moment to start
-                await asyncio.sleep(1.0)
+            tgt   = step.get("target", "")
+            config = {"executable": "openocd", "interface_config": iface, "target_config": tgt}
 
-            if not openocd_manager.connected:
+            if remote:
+                result = await remote.start(config)
+                if not result.get("ok"):
+                    raise RuntimeError(result.get("error", "Failed to start OpenOCD on remote"))
+                await asyncio.sleep(1.0)
                 for _ in range(30):
-                    if self._stop_flag:
-                        raise asyncio.CancelledError("stopped")
-                    conn = await openocd_manager.connect()
-                    if conn.get("ok"):
-                        break
+                    if self._stop_flag: raise asyncio.CancelledError("stopped")
+                    conn = await remote.connect()
+                    if conn.get("ok"): break
                     await asyncio.sleep(0.5)
                 else:
-                    raise RuntimeError("OpenOCD did not become ready in time")
+                    raise RuntimeError("Remote OpenOCD did not become ready in time")
+            else:
+                if openocd_manager.server_status != "running":
+                    result = await openocd_manager.start(config)
+                    if not result.get("ok"):
+                        raise RuntimeError(result.get("error", "Failed to start OpenOCD"))
+                    await asyncio.sleep(1.0)
+                if not openocd_manager.connected:
+                    for _ in range(30):
+                        if self._stop_flag: raise asyncio.CancelledError("stopped")
+                        conn = await openocd_manager.connect()
+                        if conn.get("ok"): break
+                        await asyncio.sleep(0.5)
+                    else:
+                        raise RuntimeError("OpenOCD did not become ready in time")
             return "started"
 
         # ── openocd (raw TCL) ─────────────────────────────────────────────────
         if t == "openocd":
             cmd = step.get("cmd", "")
-            result = await openocd_manager.send_command(cmd)
+            result = await (remote.send_command(cmd) if remote else openocd_manager.send_command(cmd))
             if result.startswith("ERROR:"):
                 raise RuntimeError(result)
             return result
 
         # ── shorthand TCL commands ────────────────────────────────────────────
         if t == "halt":
-            return await openocd_manager.send_command("halt")
+            return await (remote.send_command("halt") if remote else openocd_manager.send_command("halt"))
 
         if t == "resume":
-            return await openocd_manager.send_command("resume")
+            return await (remote.send_command("resume") if remote else openocd_manager.send_command("resume"))
 
         if t == "reset":
-            return await openocd_manager.send_command("reset run")
+            return await (remote.send_command("reset run") if remote else openocd_manager.send_command("reset run"))
 
         if t == "erase":
-            return await openocd_manager.flash_erase_chip()
+            return await (remote.flash_erase_chip() if remote else openocd_manager.flash_erase_chip())
 
         # ── flash ─────────────────────────────────────────────────────────────
         if t == "flash":
             file_key = step.get("file_key")
-            file_path = step.get("file_path")
-            address = step.get("address", "0x08000000")
-            verify = bool(step.get("verify", True))
+            file_path_str = step.get("file_path")
+            address  = step.get("address", "0x08000000")
+            verify   = bool(step.get("verify", True))
             do_reset = bool(step.get("do_reset", True))
 
-            if file_key and file_key in files:
-                data = base64.b64decode(files[file_key])
-                firmware_path = str(openocd_manager.upload_dir / file_key)
-                with open(firmware_path, "wb") as f:
-                    f.write(data)
-            elif file_path:
-                firmware_path = file_path
+            if remote:
+                if file_key and file_key in files:
+                    data = base64.b64decode(files[file_key])
+                    filename = await remote.upload_firmware(data, file_key)
+                elif file_path_str:
+                    with open(file_path_str, "rb") as f:
+                        data = f.read()
+                    import os
+                    filename = await remote.upload_firmware(data, os.path.basename(file_path_str))
+                else:
+                    raise RuntimeError("flash step requires file_key or file_path")
+                result = await remote.flash_program(filename, address, verify, do_reset)
             else:
-                raise RuntimeError("flash step requires file_key (with attached .bin) or file_path")
-
-            result = await openocd_manager.flash_program(firmware_path, address, verify)
-            if do_reset:
-                await openocd_manager.send_command("reset run")
+                if file_key and file_key in files:
+                    data = base64.b64decode(files[file_key])
+                    firmware_path = str(openocd_manager.upload_dir / file_key)
+                    with open(firmware_path, "wb") as f:
+                        f.write(data)
+                elif file_path_str:
+                    firmware_path = file_path_str
+                else:
+                    raise RuntimeError("flash step requires file_key (with attached .bin) or file_path")
+                result = await openocd_manager.flash_program(firmware_path, address, verify)
+                if do_reset:
+                    await openocd_manager.send_command("reset run")
             return result
 
         # ── uart_connect ──────────────────────────────────────────────────────
         if t == "uart_connect":
             port = step.get("port", "")
             baud = int(step.get("baud_rate", 115200))
-            if serial_manager.connected and serial_manager.port == port:
-                return "already connected"
-            if serial_manager.connected:
-                await serial_manager.disconnect()
-            result = await serial_manager.connect(port, baud)
-            if not result.get("ok"):
-                raise RuntimeError(result.get("error", "Failed to connect serial"))
+            if remote:
+                if remote.serial_connected and remote.serial_port == port:
+                    return "already connected"
+                if remote.serial_connected:
+                    await remote.disconnect_serial()
+                result = await remote.connect_serial(port, baud)
+                if not result.get("ok"):
+                    raise RuntimeError(result.get("error", "Failed to connect remote serial"))
+            else:
+                if serial_manager.connected and serial_manager.port == port:
+                    return "already connected"
+                if serial_manager.connected:
+                    await serial_manager.disconnect()
+                result = await serial_manager.connect(port, baud)
+                if not result.get("ok"):
+                    raise RuntimeError(result.get("error", "Failed to connect serial"))
             return "connected"
 
         # ── uart_disconnect ───────────────────────────────────────────────────
         if t == "uart_disconnect":
-            await serial_manager.disconnect()
+            if remote:
+                await remote.disconnect_serial()
+            else:
+                await serial_manager.disconnect()
             return "disconnected"
 
         # ── uart_send ─────────────────────────────────────────────────────────
         if t == "uart_send":
-            data = step.get("data", "")
-            data = data.replace("\\n", "\n").replace("\\r", "\r")
-            result = await serial_manager.send(data, "ascii", "none")
+            data_str = step.get("data", "")
+            data_str = data_str.replace("\\n", "\n").replace("\\r", "\r")
+            if remote:
+                result = await remote.send_serial(data_str, "ascii", "none")
+            else:
+                result = await serial_manager.send(data_str, "ascii", "none")
             if not result.get("ok"):
                 raise RuntimeError(result.get("error", "Failed to send"))
-            return f"sent {len(data)} bytes"
+            return f"sent {len(data_str)} bytes"
 
         # ── uart_wait ─────────────────────────────────────────────────────────
         if t == "uart_wait":
             pattern = step.get("pattern", "")
             timeout = float(step.get("timeout", 10))
-            return await self._uart_wait(pattern, timeout)
+            return await self._uart_wait(pattern, timeout, remote)
 
         # ── uart_extract ──────────────────────────────────────────────────────
         if t == "uart_extract":
             pattern = step.get("pattern", "")
-            group = int(step.get("group", 1))
+            group   = int(step.get("group", 1))
             timeout = float(step.get("timeout", 10))
-            full_match = await self._uart_wait(pattern, timeout)
+            full_match = await self._uart_wait(pattern, timeout, remote)
             m = re.search(pattern, full_match)
             if m:
                 try:
@@ -301,10 +357,7 @@ class ScriptRunner:
             cmd = step.get("command", "")
             timeout = float(step.get("timeout", 30))
             proc = await asyncio.create_subprocess_shell(
-                cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-            )
+                cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
             try:
                 stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
                 return stdout.decode("utf-8", errors="replace").strip()
@@ -314,9 +367,13 @@ class ScriptRunner:
 
         raise RuntimeError(f"Unknown step type: '{t}'")
 
-    async def _uart_wait(self, pattern: str, timeout: float) -> str:
+    async def _uart_wait(self, pattern: str, timeout: float,
+                         remote: Optional[RemoteClient] = None) -> str:
         queue: asyncio.Queue = asyncio.Queue()
-        serial_manager.add_rx_listener(queue)
+        if remote:
+            remote.add_rx_listener(queue)
+        else:
+            serial_manager.add_rx_listener(queue)
         buf = ""
         deadline = time.monotonic() + timeout
         try:
@@ -334,7 +391,10 @@ class ScriptRunner:
                 except asyncio.TimeoutError:
                     continue
         finally:
-            serial_manager.remove_rx_listener(queue)
+            if remote:
+                remote.remove_rx_listener(queue)
+            else:
+                serial_manager.remove_rx_listener(queue)
 
 
 script_runner = ScriptRunner()

@@ -138,12 +138,30 @@ export interface Script {
 }
 
 export const scripts = {
-  list:   ()                          => req<{ ok: boolean; scripts: ScriptMeta[] }>('GET', '/scripts'),
-  get:    (id: number)                => req<{ ok: boolean; script: Script }>('GET', `/scripts/${id}`),
-  upsert: (s: Script)                 => req<{ ok: boolean; script: Script }>('POST', '/scripts', s),
-  delete: (id: number)                => req<{ ok: boolean }>('DELETE', `/scripts/${id}`),
-  run:    (id: number)                => req<{ ok: boolean }>('POST', `/scripts/${id}/run`),
-  stop:   ()                          => req<{ ok: boolean }>('POST', '/scripts/stop'),
+  list:   ()                               => req<{ ok: boolean; scripts: ScriptMeta[] }>('GET', '/scripts'),
+  get:    (id: number)                     => req<{ ok: boolean; script: Script }>('GET', `/scripts/${id}`),
+  upsert: (s: Script)                      => req<{ ok: boolean; script: Script }>('POST', '/scripts', s),
+  delete: (id: number)                     => req<{ ok: boolean }>('DELETE', `/scripts/${id}`),
+  run:    (id: number, remoteId?: string)  => req<{ ok: boolean }>('POST', `/scripts/${id}/run${remoteId ? `?remote_id=${remoteId}` : ''}`),
+  stop:   ()                               => req<{ ok: boolean }>('POST', '/scripts/stop'),
+}
+
+// ── Remotes ───────────────────────────────────────────────────────────────────
+
+export interface RemoteAgent {
+  id:        string
+  name:      string
+  host:      string
+  port:      number
+  has_token: boolean
+}
+
+export const remotes = {
+  list:   ()                                                    => req<{ ok: boolean; remotes: RemoteAgent[] }>('GET', '/remotes'),
+  add:    (body: { name: string; host: string; port: number; token?: string }) => req<{ ok: boolean; remote: RemoteAgent }>('POST', '/remotes', body),
+  update: (id: string, body: { name: string; host: string; port: number; token?: string }) => req<{ ok: boolean; remote: RemoteAgent }>('PUT', `/remotes/${id}`, body),
+  delete: (id: string)                                          => req<{ ok: boolean }>('DELETE', `/remotes/${id}`),
+  test:   (id: string)                                          => req<{ ok: boolean; info?: object; error?: string }>('POST', `/remotes/${id}/test`),
 }
 
 // ── Tools ─────────────────────────────────────────────────────────────────────

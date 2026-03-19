@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { Account, Platform } from '../../types'
-import { settings as settingsApi } from '../../api/client'
+import { settings as settingsApi, remotes as remotesApi, type RemoteAgent } from '../../api/client'
 
 const PLATFORM_LABEL: Record<Platform, string> = {
   github: 'GitHub',
@@ -179,6 +179,185 @@ function AccountForm({
   )
 }
 
+// ── Remote Agents section ──────────────────────────────────────────────────────
+
+interface RemoteForm { name: string; host: string; port: string; token: string }
+const EMPTY_REMOTE: RemoteForm = { name: '', host: '', port: '7777', token: '' }
+
+function RemoteAgentsSection() {
+  const [list, setList]         = useState<RemoteAgent[]>([])
+  const [form, setForm]         = useState<RemoteForm>(EMPTY_REMOTE)
+  const [editId, setEditId]     = useState<string | null>(null)  // null=closed, 'new'=add form, id=edit
+  const [testRes, setTestRes]   = useState<Record<string, { ok: boolean; text: string }>>({})
+  const [testing, setTesting]   = useState<string | null>(null)
+  const [saving, setSaving]     = useState(false)
+  const [err, setErr]           = useState('')
+
+  async function load() {
+    try { const r = await remotesApi.list(); setList(r.remotes) } catch {}
+  }
+  useEffect(() => { load() }, [])
+
+  function openAdd() { setForm(EMPTY_REMOTE); setEditId('new'); setErr('') }
+  function openEdit(r: RemoteAgent) {
+    setForm({ name: r.name, host: r.host, port: String(r.port), token: '' })
+    setEditId(r.id); setErr('')
+  }
+  function closeForm() { setEditId(null) }
+
+  async function save() {
+    if (!form.name.trim() || !form.host.trim()) { setErr('Name and host are required'); return }
+    setSaving(true); setErr('')
+    try {
+      const body = { name: form.name.trim(), host: form.host.trim(),
+                     port: parseInt(form.port) || 7777, token: form.token }
+      if (editId === 'new') await remotesApi.add(body)
+      else                   await remotesApi.update(editId!, body)
+      await load(); closeForm()
+    } catch (e) { setErr(String(e)) }
+    finally { setSaving(false) }
+  }
+
+  async function del(id: string) {
+    if (!confirm('Delete this remote agent?')) return
+    await remotesApi.delete(id); await load()
+    if (editId === id) closeForm()
+  }
+
+  async function test(id: string) {
+    setTesting(id)
+    setTestRes(p => ({ ...p, [id]: { ok: false, text: 'Testing…' } }))
+    try {
+      const r = await remotesApi.test(id)
+      setTestRes(p => ({ ...p, [id]: {
+        ok: r.ok,
+        text: r.ok ? `Connected — ${JSON.stringify(r.info)}` : (r.error ?? 'Failed'),
+      }}))
+    } catch (e) { setTestRes(p => ({ ...p, [id]: { ok: false, text: String(e) } })) }
+    finally { setTesting(null) }
+  }
+
+  const f = (k: keyof RemoteForm, v: string) => { setForm(p => ({ ...p, [k]: v })); setErr('') }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-semibold text-zinc-200">Remote Agents</h2>
+          <p className="text-xs text-zinc-500 mt-0.5">
+            Run <code className="text-zinc-400">python remote_agent.py</code> on the target PC, then add it here.
+          </p>
+        </div>
+        <button className="btn-primary text-xs px-3 py-1.5"
+          onClick={() => editId === 'new' ? closeForm() : openAdd()}>
+          {editId === 'new' ? 'Cancel' : '+ Add Agent'}
+        </button>
+      </div>
+
+      {/* Add form */}
+      {editId === 'new' && (
+        <div className="panel p-4 space-y-3">
+          <div className="text-sm font-medium text-zinc-300">New Remote Agent</div>
+          <RemoteFormFields form={form} setField={f} />
+          {err && <p className="text-xs text-red-400">✗ {err}</p>}
+          <div className="flex gap-2">
+            <button className="btn-primary text-xs px-4" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+            <button className="btn-ghost text-xs px-3" onClick={closeForm} disabled={saving}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Agent list */}
+      {list.length === 0 && editId !== 'new' ? (
+        <div className="panel p-6 text-center">
+          <div className="text-zinc-500 text-sm">No remote agents configured.</div>
+          <div className="text-zinc-600 text-xs mt-1">
+            Deploy <code>remote_agent.py</code> on the remote PC and add its address here.
+          </div>
+        </div>
+      ) : list.map(agent => (
+        <div key={agent.id} className="panel">
+          <div className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-2 h-2 rounded-full bg-zinc-600 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-zinc-200">{agent.name}</div>
+                <div className="text-xs text-zinc-500 mono">
+                  {agent.host}:{agent.port}
+                  {agent.has_token && <span className="ml-2 text-amber-500/70">🔑 token set</span>}
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button className="btn-ghost text-xs py-1 px-2"
+                  onClick={() => test(agent.id)} disabled={testing === agent.id}>
+                  {testing === agent.id ? 'Testing…' : 'Test'}
+                </button>
+                <button className={`text-xs py-1 px-2 btn ${editId === agent.id ? 'bg-amber-700/30 border border-amber-600/40 text-amber-400' : 'btn-ghost'}`}
+                  onClick={() => editId === agent.id ? closeForm() : openEdit(agent)}>Edit</button>
+                <button className="btn-ghost text-xs py-1 px-2 text-red-400 hover:text-red-300"
+                  onClick={() => del(agent.id)}>✕</button>
+              </div>
+            </div>
+
+            {testRes[agent.id] && (
+              <div className={`text-xs mt-2 mono ${testRes[agent.id].ok ? 'text-green-400' : 'text-red-400'}`}>
+                {testRes[agent.id].ok ? '✓' : '✗'} {testRes[agent.id].text}
+              </div>
+            )}
+
+            {editId === agent.id && (
+              <div className="mt-4 border-t border-[#21262d] pt-4 space-y-3">
+                <RemoteFormFields form={form} setField={f} />
+                <p className="text-xs text-zinc-600">Leave token blank to keep the existing value.</p>
+                {err && <p className="text-xs text-red-400">✗ {err}</p>}
+                <div className="flex gap-2">
+                  <button className="btn-primary text-xs px-4" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+                  <button className="btn-ghost text-xs px-3" onClick={closeForm} disabled={saving}>Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function RemoteFormFields({ form, setField }: {
+  form: RemoteForm
+  setField: (k: keyof RemoteForm, v: string) => void
+}) {
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-zinc-400 block mb-1">Name</label>
+          <input className="input w-full" placeholder="e.g. Raspberry Pi" value={form.name}
+            onChange={e => setField('name', e.target.value)} />
+        </div>
+        <div>
+          <label className="text-xs text-zinc-400 block mb-1">Port</label>
+          <input className="input w-full mono" placeholder="7777" value={form.port}
+            onChange={e => setField('port', e.target.value)} />
+        </div>
+      </div>
+      <div>
+        <label className="text-xs text-zinc-400 block mb-1">Host / IP</label>
+        <input className="input w-full mono" placeholder="192.168.1.100" value={form.host}
+          onChange={e => setField('host', e.target.value)} />
+      </div>
+      <div>
+        <label className="text-xs text-zinc-400 block mb-1">API Token (optional)</label>
+        <input className="input w-full mono" type="password" placeholder="Leave blank for no auth"
+          value={form.token} onChange={e => setField('token', e.target.value)}
+          autoComplete="new-password" />
+      </div>
+    </>
+  )
+}
+
+// ── Main settings tab ──────────────────────────────────────────────────────────
+
 export default function SettingsTab() {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [loading, setLoading] = useState(true)
@@ -238,7 +417,11 @@ export default function SettingsTab() {
 
   return (
     <div className="flex flex-col h-full p-6 overflow-y-auto">
-      <div className="max-w-2xl mx-auto w-full space-y-5">
+      <div className="max-w-2xl mx-auto w-full space-y-10">
+
+        <RemoteAgentsSection />
+
+        <hr className="border-[#21262d]" />
 
         <div className="flex items-center justify-between">
           <div>

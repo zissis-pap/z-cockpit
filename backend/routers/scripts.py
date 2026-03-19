@@ -71,6 +71,6 @@ async def stop_script():
 
 
 @router.post("/{script_id}/run")
-async def run_script(script_id: int):
-    asyncio.create_task(script_runner.run(script_id))
+async def run_script(script_id: int, remote_id: str = ""):
+    asyncio.create_task(script_runner.run(script_id, remote_id or None))
     return {"ok": True}

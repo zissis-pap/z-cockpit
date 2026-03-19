@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { scripts, type Script, type ScriptMeta } from '../../api/client'
+import { scripts, remotes, type Script, type ScriptMeta, type RemoteAgent } from '../../api/client'
 import { useWebSocket } from '../../hooks/useWebSocket'
 
 // ── Cheatsheet ────────────────────────────────────────────────────────────────
@@ -255,6 +255,9 @@ export default function ScriptRunner() {
   const [running, setRunning]         = useState(false)
   const [logLines, setLogLines]       = useState<string[]>([])
   const [showCheatsheet, setShowCheatsheet] = useState(false)
+  const [remoteList, setRemoteList]   = useState<RemoteAgent[]>([])
+  const [selectedRemote, setSelectedRemote] = useState<string>('')  // '' = local
+  const [runTarget, setRunTarget]     = useState<string>('local')  // display label
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const stepsEndRef  = useRef<HTMLDivElement>(null)
@@ -286,6 +289,7 @@ export default function ScriptRunner() {
       setStepStates(Array.from({ length: count }, () => ({ status: 'pending' })))
       setLogLines([])
       setRunning(true)
+      setRunTarget(String(msg.target ?? 'local'))
       setView('steps')
       return
     }
@@ -321,6 +325,12 @@ export default function ScriptRunner() {
   }, [])
 
   useWebSocket('/ws/scripts', handleWs)
+
+  // ── Load remotes ───────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    remotes.list().then(r => setRemoteList(r.remotes)).catch(() => {})
+  }, [])
 
   // ── Load script list ───────────────────────────────────────────────────────
 
@@ -384,7 +394,7 @@ export default function ScriptRunner() {
   async function runScript() {
     await saveScript()
     if (selectedId) {
-      await scripts.run(selectedId)
+      await scripts.run(selectedId, selectedRemote || undefined)
     }
   }
 
@@ -460,6 +470,22 @@ export default function ScriptRunner() {
         >?</button>
 
         <div className="w-px h-4 bg-zinc-700 shrink-0" />
+
+        {/* Run-on selector */}
+        <div className="flex items-center gap-1 shrink-0">
+          <span className="text-xs text-zinc-500">on:</span>
+          <select
+            className="input text-xs py-0.5 px-1.5"
+            value={selectedRemote}
+            onChange={e => setSelectedRemote(e.target.value)}
+            disabled={running}
+          >
+            <option value="">Local</option>
+            {remoteList.map(r => (
+              <option key={r.id} value={r.id}>{r.name}</option>
+            ))}
+          </select>
+        </div>
 
         {running ? (
           <button className="btn-ghost text-xs px-3 py-1 normal-case font-normal text-red-400 border border-red-500/30"
@@ -564,7 +590,7 @@ export default function ScriptRunner() {
         <div className="panel flex-1 overflow-y-auto min-h-0">
           <div className="panel-header">
             {running ? (
-              <span className="text-blue-400">Running…</span>
+              <span className="text-blue-400">Running on <span className="font-semibold">{runTarget}</span>…</span>
             ) : stepStates.some(s => s.status === 'error') ? (
               <span className="text-red-400">Failed</span>
             ) : stepStates.every(s => s.status === 'done') && stepStates.length > 0 ? (
