@@ -1,13 +1,14 @@
 import { useState, useRef, useEffect } from 'react'
-import { openocd } from '../../api/client'
+import type { OcdApi } from '../../api/client'
 
 interface Props {
   connected: boolean
   onLog: (text: string, level?: string) => void
   onFirmwareReady: (filename: string, data: Uint8Array, baseAddress: string) => void
+  ocd: OcdApi
 }
 
-export default function FlashOps({ connected, onLog, onFirmwareReady }: Props) {
+export default function FlashOps({ connected, onLog, onFirmwareReady, ocd }: Props) {
   const [uploadedFile, setUploadedFile] = useState<string>('')
   const [uploadedSize, setUploadedSize] = useState<number>(0)
   const [baseAddress, setBaseAddress] = useState('0x08000000')
@@ -29,7 +30,7 @@ export default function FlashOps({ connected, onLog, onFirmwareReady }: Props) {
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    const res = await openocd.uploadFirmware(file) as { ok: boolean; filename: string; size: number; error?: string }
+    const res = await ocd.uploadFirmware(file) as { ok: boolean; filename: string; size: number; error?: string }
     if (res.ok) {
       setUploadedFile(res.filename)
       setUploadedSize(res.size)
@@ -116,12 +117,12 @@ export default function FlashOps({ connected, onLog, onFirmwareReady }: Props) {
         <div className="p-3 grid grid-cols-2 gap-2">
           <button className="btn-ghost"
             disabled={busy || !connected}
-            onClick={() => run('Halt', () => openocd.flash.halt() as Promise<{ ok: boolean; result?: string; error?: string }>)}>
+            onClick={() => run('Halt', () => ocd.flash.halt() as Promise<{ ok: boolean; result?: string; error?: string }>)}>
             ⏸ Halt
           </button>
           <button className="btn-amber"
             disabled={busy || !connected}
-            onClick={() => run('Erase', () => openocd.flash.erase(baseAddress, eraseSize) as Promise<{ ok: boolean; result?: string; error?: string }>)}>
+            onClick={() => run('Erase', () => ocd.flash.erase(baseAddress, eraseSize) as Promise<{ ok: boolean; result?: string; error?: string }>)}>
             🗑 Erase
           </button>
           {!confirmChipErase ? (
@@ -138,7 +139,7 @@ export default function FlashOps({ connected, onLog, onFirmwareReady }: Props) {
                 disabled={busy}
                 onClick={() => {
                   setConfirmChipErase(false)
-                  run('Full Chip Erase', () => openocd.flash.eraseChip() as Promise<{ ok: boolean; result?: string; error?: string }>)
+                  run('Full Chip Erase', () => ocd.flash.eraseChip() as Promise<{ ok: boolean; result?: string; error?: string }>)
                 }}>
                 Confirm — erase all flash
               </button>
@@ -149,17 +150,17 @@ export default function FlashOps({ connected, onLog, onFirmwareReady }: Props) {
           )}
           <button className="btn-primary col-span-2"
             disabled={busy || !connected || !uploadedFile}
-            onClick={() => run('Program', () => openocd.flash.program(uploadedFile, baseAddress, true) as Promise<{ ok: boolean; result?: string; error?: string }>)}>
+            onClick={() => run('Program', () => ocd.flash.program(uploadedFile, baseAddress, true) as Promise<{ ok: boolean; result?: string; error?: string }>)}>
             ⚡ Program & Verify
           </button>
           <button className="btn-ghost"
             disabled={busy || !connected || !uploadedFile}
-            onClick={() => run('Verify', () => openocd.flash.verify(uploadedFile, baseAddress) as Promise<{ ok: boolean; result?: string; error?: string }>)}>
+            onClick={() => run('Verify', () => ocd.flash.verify(uploadedFile, baseAddress) as Promise<{ ok: boolean; result?: string; error?: string }>)}>
             ✓ Verify
           </button>
           <button className="btn-success"
             disabled={busy || !connected}
-            onClick={() => run('Reset & Run', () => openocd.flash.reset() as Promise<{ ok: boolean; result?: string; error?: string }>)}>
+            onClick={() => run('Reset & Run', () => ocd.flash.reset() as Promise<{ ok: boolean; result?: string; error?: string }>)}>
             ▶ Reset & Run
           </button>
         </div>
@@ -187,12 +188,12 @@ export default function FlashOps({ connected, onLog, onFirmwareReady }: Props) {
               if (!connected) return
               setBusy(true)
               const filename = 'dump.bin'
-              const res = await openocd.flash.read(readAddress, readSize, filename) as { ok: boolean; result?: string; filename?: string }
+              const res = await ocd.flash.read(readAddress, readSize, filename) as { ok: boolean; result?: string; filename?: string }
               setBusy(false)
               if (res.ok && res.filename) {
                 onLog(`Flash read OK → downloading ${res.filename}`, 'info')
                 const a = document.createElement('a')
-                a.href = openocd.flash.downloadUrl(res.filename)
+                a.href = ocd.flash.downloadUrl(res.filename)
                 a.download = res.filename
                 a.click()
               } else {

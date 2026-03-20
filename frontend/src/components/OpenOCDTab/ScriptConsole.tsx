@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, KeyboardEvent } from 'react'
-import { openocd } from '../../api/client'
+import type { OcdApi } from '../../api/client'
 
 interface ConsoleLine {
   id: number
@@ -9,11 +9,12 @@ interface ConsoleLine {
 
 interface Props {
   connected: boolean
+  ocd: OcdApi
 }
 
 let lineId = 0
 
-export default function ScriptConsole({ connected }: Props) {
+export default function ScriptConsole({ connected, ocd }: Props) {
   const [lines, setLines] = useState<ConsoleLine[]>([])
   const [input, setInput] = useState('')
   const [history, setHistory] = useState<string[]>([])
@@ -38,7 +39,7 @@ export default function ScriptConsole({ connected }: Props) {
     setHistory(h => [cmd, ...h.slice(0, 99)])
     setHistIdx(-1)
     setInput('')
-    const res = await openocd.command(cmd)
+    const res = await ocd.command(cmd)
     if (res.result) {
       for (const line of res.result.split('\n')) {
         appendLine('out', line)

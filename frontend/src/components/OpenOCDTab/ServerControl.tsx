@@ -1,15 +1,16 @@
 import { useState } from 'react'
 import { INTERFACES } from '../../data/mcuConfigs'
 import type { OpenOCDStatus } from '../../types'
-import { openocd } from '../../api/client'
+import type { OcdApi } from '../../api/client'
 
 interface Props {
   status: OpenOCDStatus
   targetConfig: string
   onLog: (text: string, level?: string) => void
+  ocd: OcdApi
 }
 
-export default function ServerControl({ status, targetConfig, onLog }: Props) {
+export default function ServerControl({ status, targetConfig, onLog, ocd }: Props) {
   const [executable, setExecutable] = useState('openocd')
   const [interfaceIdx, setInterfaceIdx] = useState(0)
   const [customConfig, setCustomConfig] = useState('')
@@ -23,7 +24,7 @@ export default function ServerControl({ status, targetConfig, onLog }: Props) {
   async function handleStart() {
     setBusy(true)
     try {
-      const res: { ok: boolean; error?: string; cmd?: string } = await openocd.start({
+      const res: { ok: boolean; error?: string; cmd?: string } = await ocd.start({
         executable,
         interface_config: INTERFACES[interfaceIdx].config,
         target_config: targetConfig,
@@ -39,20 +40,20 @@ export default function ServerControl({ status, targetConfig, onLog }: Props) {
 
   async function handleStop() {
     setBusy(true)
-    try { await openocd.stop() } finally { setBusy(false) }
+    try { await ocd.stop() } finally { setBusy(false) }
   }
 
   async function handleConnect() {
     setBusy(true)
     try {
-      const res: { ok: boolean; error?: string } = await openocd.connect() as { ok: boolean; error?: string }
+      const res: { ok: boolean; error?: string } = await ocd.connect() as { ok: boolean; error?: string }
       if (!res.ok) onLog(`Connect failed: ${res.error}`, 'error')
     } finally { setBusy(false) }
   }
 
   async function handleDisconnect() {
     setBusy(true)
-    try { await openocd.disconnect() } finally { setBusy(false) }
+    try { await ocd.disconnect() } finally { setBusy(false) }
   }
 
   const dotClass =

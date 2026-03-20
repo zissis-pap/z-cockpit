@@ -7,7 +7,8 @@ import ScriptConsole from './ScriptConsole'
 import ScriptRunner from './ScriptRunner'
 import LogViewer from './LogViewer'
 import { useWebSocket } from '../../hooks/useWebSocket'
-import { useResizable } from '../../hooks/useResizable'
+import { createOCDApi, remotes } from '../../api/client'
+import type { RemoteAgent } from '../../api/client'
 import type { OpenOCDStatus, LogEntry, MemoryRow } from '../../types'
 
 const RIGHT_TABS = [
@@ -29,7 +30,24 @@ export default function OpenOCDTab() {
   const [memoryRows, setMemoryRows] = useState<MemoryRow[]>([])
   const [firmwareData, setFirmwareData]         = useState<Uint8Array | null>(null)
   const [firmwareBaseAddr, setFirmwareBaseAddr]  = useState('0x08000000')
+  const [remoteList, setRemoteList] = useState<RemoteAgent[]>([])
+  const [selectedRemoteId, setSelectedRemoteId] = useState<string | undefined>(undefined)
   const prevConnected = useRef(false)
+
+  // Load remote agents once
+  useEffect(() => {
+    remotes.list().then(r => setRemoteList(r.remotes)).catch(() => {})
+  }, [])
+
+  // Reset status when switching target
+  const prevRemoteId = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (prevRemoteId.current !== selectedRemoteId) {
+      setStatus({ server: 'stopped', connected: false })
+      setMemoryRows([])
+      prevRemoteId.current = selectedRemoteId
+    }
+  }, [selectedRemoteId])
 
   // Clear memory rows when board disconnects
   useEffect(() => {
@@ -38,8 +56,7 @@ export default function OpenOCDTab() {
     }
     prevConnected.current = status.connected
   }, [status.connected])
-  const [logCollapsed, setLogCollapsed] = useState(false)
-  const { height: logHeight, onMouseDown: logDragStart } = useResizable(Math.round(window.innerHeight * 0.25))
+
 
   const addLog = useCallback((text: string, level = 'info') => {
     const ts = new Date().toLocaleTimeString('en-US', { hour12: false })
@@ -64,82 +81,118 @@ export default function OpenOCDTab() {
     }
   }, [addLog])
 
-  useWebSocket('/ws/openocd', handleWsMessage)
+  // Dynamic WS URL: local or proxied through remote agent
+  const wsUrl = selectedRemoteId
+    ? `/ws/remotes/${selectedRemoteId}/openocd`
+    : '/ws/openocd'
+
+  useWebSocket(wsUrl, handleWsMessage)
+
+  // OCD API instance: local or proxied
+  const ocd = createOCDApi(selectedRemoteId)
 
   function handleMcuSelect(config: string, name: string) {
     setTargetConfig(config)
     addLog(`Target selected: ${name} (${config})`, 'info')
   }
 
+  const selectedRemote = remoteList.find(r => r.id === selectedRemoteId)
+
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Main area */}
-      <div className="flex flex-1 gap-2 p-2 overflow-hidden min-h-0">
+    <div className="flex h-full overflow-hidden p-2 gap-2">
 
-        {/* Left panel */}
-        <div className="flex flex-col gap-2 w-64 shrink-0 overflow-y-auto">
-          <ServerControl
-            status={status}
-            targetConfig={targetConfig}
-            onLog={addLog}
-          />
-          <MCUSelector
-            selectedConfig={targetConfig}
-            onSelect={handleMcuSelect}
-          />
-        </div>
+      {/* Left panel — full height */}
+      <div className="flex flex-col gap-2 w-64 shrink-0 overflow-y-auto">
 
-        {/* Right panel */}
-        <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-          {/* Tab bar */}
-          <div className="flex border-b border-[#30363d] shrink-0 mb-2">
-            {RIGHT_TABS.map(t => (
-              <button
-                key={t.id}
-                onClick={() => setRightTab(t.id)}
-                className={rightTab === t.id ? 'tab-btn-active' : 'tab-btn-inactive'}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Tab content — always mounted, shown/hidden via CSS to preserve state */}
-          <div className="flex-1 overflow-y-auto min-h-0 pr-0.5">
-            <div className={rightTab === 'flash'   ? '' : 'hidden'}><FlashOps connected={status.connected} onLog={addLog} onFirmwareReady={(_, data, base) => { setFirmwareData(data); setFirmwareBaseAddr(base) }} /></div>
-            <div className={rightTab === 'memory'  ? '' : 'hidden'}><MemoryViewer connected={status.connected} rows={memoryRows} onRows={setMemoryRows} onLog={addLog} firmwareData={firmwareData} firmwareBaseAddr={firmwareBaseAddr} /></div>
-            <div className={rightTab === 'scripts' ? 'flex flex-col h-full' : 'hidden'}><ScriptRunner /></div>
-            <div className={rightTab === 'console' ? 'flex flex-col h-full' : 'hidden'}><ScriptConsole connected={status.connected} /></div>
+        {/* Target selector */}
+        <div className="panel">
+          <div className="panel-header">Target</div>
+          <div className="p-2">
+            <select
+              className="select w-full text-xs"
+              value={selectedRemoteId ?? ''}
+              onChange={e => setSelectedRemoteId(e.target.value || undefined)}
+            >
+              <option value="">Local</option>
+              {remoteList.map(r => (
+                <option key={r.id} value={r.id}>{r.name} ({r.host}:{r.port})</option>
+              ))}
+            </select>
+            {selectedRemote && (
+              <div className="mt-1 text-[10px] text-zinc-500 truncate">
+                via {selectedRemote.host}:{selectedRemote.port}
+                {selectedRemote.has_token ? ' 🔒' : ''}
+              </div>
+            )}
           </div>
         </div>
+
+        <ServerControl
+          status={status}
+          targetConfig={targetConfig}
+          onLog={addLog}
+          ocd={ocd}
+        />
+        <MCUSelector
+          selectedConfig={targetConfig}
+          onSelect={handleMcuSelect}
+        />
       </div>
 
-      {/* Log panel */}
-      <div
-        className="shrink-0 border-t border-[#30363d] bg-[#0a0c10]"
-        style={{ height: logCollapsed ? 32 : logHeight }}
-      >
-        {/* Drag handle */}
-        {!logCollapsed && (
-          <div
-            className="h-1 w-full cursor-ns-resize flex items-center justify-center group hover:bg-blue-500/20 transition-colors"
-            onMouseDown={logDragStart}
-          >
-            <div className="w-8 h-0.5 rounded-full bg-zinc-700 group-hover:bg-blue-500/60 transition-colors" />
-          </div>
-        )}
-        <div className="flex items-center px-3 py-1.5 border-b border-[#21262d] cursor-pointer select-none"
-          onClick={() => setLogCollapsed(v => !v)}>
-          <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider flex-1">
-            Log {logs.length > 0 && `(${logs.length})`}
-          </span>
-          <span className="text-zinc-600 text-xs">{logCollapsed ? '▲' : '▼'}</span>
+      {/* Right panel — tabs + log stacked */}
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+
+        {/* Tab bar */}
+        <div className="flex border-b border-[#30363d] shrink-0 mb-2">
+          {RIGHT_TABS.map(t => (
+            <button
+              key={t.id}
+              onClick={() => setRightTab(t.id)}
+              className={rightTab === t.id ? 'tab-btn-active' : 'tab-btn-inactive'}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
-        {!logCollapsed && (
-          <div className="h-[calc(100%-36px)]">
+
+        {/* Tab content + Log — stacked, log fills remaining */}
+        <div className="flex-1 flex flex-col min-h-0">
+
+          {/* Tab content — natural height, scrolls only when taller than available space */}
+          <div className="overflow-y-auto min-h-0 pr-0.5">
+            <div className={rightTab === 'flash'   ? '' : 'hidden'}>
+              <FlashOps
+                connected={status.connected}
+                onLog={addLog}
+                onFirmwareReady={(_, data, base) => { setFirmwareData(data); setFirmwareBaseAddr(base) }}
+                ocd={ocd}
+              />
+            </div>
+            <div className={rightTab === 'memory'  ? '' : 'hidden'}>
+              <MemoryViewer
+                connected={status.connected}
+                rows={memoryRows}
+                onRows={setMemoryRows}
+                onLog={addLog}
+                firmwareData={firmwareData}
+                firmwareBaseAddr={firmwareBaseAddr}
+                ocd={ocd}
+              />
+            </div>
+            <div className={rightTab === 'scripts' ? 'flex flex-col h-full' : 'hidden'}>
+              <ScriptRunner />
+            </div>
+            <div className={rightTab === 'console' ? 'flex flex-col h-full' : 'hidden'}>
+              <ScriptConsole connected={status.connected} ocd={ocd} />
+            </div>
+          </div>
+
+          {/* Log — fills all remaining space below tab content */}
+          <div className="flex-1 min-h-32 mt-3 bg-[#0a0c10] overflow-hidden">
             <LogViewer logs={logs} onClear={() => setLogs([])} />
           </div>
-        )}
+
+        </div>
       </div>
     </div>
   )

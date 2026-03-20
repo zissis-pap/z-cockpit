@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useMemo } from 'react'
-import { openocd } from '../../api/client'
+import type { OcdApi } from '../../api/client'
 import type { MemoryRow } from '../../types'
 
 interface Props {
@@ -9,6 +9,7 @@ interface Props {
   onLog: (text: string, level?: string) => void
   firmwareData: Uint8Array | null
   firmwareBaseAddr: string
+  ocd: OcdApi
 }
 
 const BYTES_PER_ROW = 16
@@ -43,7 +44,7 @@ function flattenRows(rows: MemoryRow[]): { baseAddr: number; data: Uint8Array } 
   return { baseAddr, data: new Uint8Array(allBytes) }
 }
 
-export default function MemoryViewer({ connected, rows, onRows, onLog, firmwareData, firmwareBaseAddr }: Props) {
+export default function MemoryViewer({ connected, rows, onRows, onLog, firmwareData, firmwareBaseAddr, ocd }: Props) {
   const [address, setAddress] = useState('0x08000000')
   const [size, setSize]       = useState(256)
   const [busy, setBusy]       = useState(false)
@@ -89,7 +90,7 @@ export default function MemoryViewer({ connected, rows, onRows, onLog, firmwareD
     const readAddr = addrOverride ?? address
     const readSize = sizeOverride ?? size
     try {
-      const res = await openocd.memory.read(readAddr, readSize)
+      const res = await ocd.memory.read(readAddr, readSize)
       if (res.ok) {
         onRows(res.rows)
         setModifications(new Map())
@@ -180,7 +181,7 @@ export default function MemoryViewer({ connected, rows, onRows, onLog, firmwareD
         const addr = minAddr + i
         data.push(modifications.has(addr) ? modifications.get(addr)! : (getByte(addr) ?? 0xff))
       }
-      const res = await openocd.flash.patchBytes(minAddr, data)
+      const res = await ocd.flash.patchBytes(minAddr, data)
       if (res.ok) {
         onLog(`Flash patched OK (page_size=${res.page_size} B, page_base=${res.page_base})`, 'info')
         setModifications(new Map())

@@ -14,7 +14,7 @@
 | `openocd` | Must be in `PATH` on the remote machine |
 
 ```bash
-pip install fastapi uvicorn pyserial
+pip install fastapi "uvicorn[standard]" pyserial
 ```
 
 ---

@@ -16,7 +16,7 @@ from backend.routers.projects import router as projects_router, ws_router as pro
 from backend.routers.tools import router as tools_router, ws_router as tools_ws
 from backend.routers.mqtt    import router as mqtt_router,    ws_router as mqtt_ws
 from backend.routers.scripts import router as scripts_router, ws_router as scripts_ws
-from backend.routers.remotes import router as remotes_router
+from backend.routers.remotes import router as remotes_router, ws_router as remotes_ws
 
 app = FastAPI(title="Z-Cockpit", version="0.1.0")
 
@@ -52,6 +52,7 @@ app.include_router(mqtt_ws)
 app.include_router(scripts_router)
 app.include_router(scripts_ws)
 app.include_router(remotes_router)
+app.include_router(remotes_ws)
 
 # Serve built React frontend (production mode)
 STATIC_DIR = Path(__file__).parent / "static"

@@ -17,41 +17,54 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
 
 // ── OpenOCD ─────────────────────────────────────────────────────────────────
 
-export const openocd = {
-  start:      (cfg: object)  => req('POST', '/openocd/start', cfg),
-  stop:       ()             => req('POST', '/openocd/stop'),
-  connect:    ()             => req('POST', '/openocd/connect'),
-  disconnect: ()             => req('POST', '/openocd/disconnect'),
-  status:     ()             => req('GET',  '/openocd/status'),
-  command:    (cmd: string)  => req<{ ok: boolean; result: string }>('POST', '/openocd/command', { cmd }),
+export function createOCDApi(remoteId?: string) {
+  // When remoteId is set, all calls are proxied through /api/remotes/{id}/proxy/
+  const prefix = remoteId ? `/remotes/${remoteId}/proxy/api` : ''
 
-  uploadFirmware: (file: File) => {
-    const fd = new FormData()
-    fd.append('file', file)
-    return fetch(`${BASE}/openocd/firmware/upload`, { method: 'POST', body: fd }).then(r => r.json())
-  },
+  function r<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
+    return req<T>(method, `${prefix}${path}`, body)
+  }
 
-  flash: {
-    halt:       ()                                          => req('POST', '/openocd/flash/halt'),
-    eraseChip:  ()                                          => req('POST', '/openocd/flash/erase_chip'),
-    erase:      (address: string, size: string)             => req('POST', '/openocd/flash/erase', { address, size }),
-    program: (filename: string, address: string, verify: boolean) =>
-      req('POST', '/openocd/flash/program', { filename, address, verify }),
-    read:    (address: string, size: string, output_filename: string) =>
-      req('POST', '/openocd/flash/read', { address, size, output_filename }),
-    verify:  (filename: string, address: string)         => req('POST', '/openocd/flash/verify', { filename, address }),
-    reset:   ()                                          => req('POST', '/openocd/flash/reset'),
-    info:    ()                                          => req('GET', '/openocd/flash/info'),
-    downloadUrl: (filename: string) => `${BASE}/openocd/flash/download/${filename}`,
-    patchBytes: (address: number, data: number[]) => req<{ ok: boolean; result: string; page_size?: number; page_base?: string }>('POST', '/openocd/flash/patch_bytes', { address, data }),
-    pageSize:   () => req<{ ok: boolean; page_size: number }>('GET', '/openocd/flash/page_size'),
-  },
+  return {
+    start:      (cfg: object)  => r('POST', '/openocd/start', cfg),
+    stop:       ()             => r('POST', '/openocd/stop'),
+    connect:    ()             => r('POST', '/openocd/connect'),
+    disconnect: ()             => r('POST', '/openocd/disconnect'),
+    status:     ()             => r('GET',  '/openocd/status'),
+    command:    (cmd: string)  => r<{ ok: boolean; result: string }>('POST', '/openocd/command', { cmd }),
 
-  memory: {
-    read:  (address: string, size: number) => req<{ ok: boolean; rows: Array<{ address: string; words: number[] }> }>('POST', '/openocd/memory/read', { address, size }),
-    write: (address: string, value: string) => req('POST', '/openocd/memory/write', { address, value }),
-  },
+    uploadFirmware: (file: File) => {
+      const fd = new FormData()
+      fd.append('file', file)
+      return fetch(`${BASE}${prefix}/openocd/firmware/upload`, { method: 'POST', body: fd }).then(res => res.json())
+    },
+
+    flash: {
+      halt:       ()                                          => r('POST', '/openocd/flash/halt'),
+      eraseChip:  ()                                          => r('POST', '/openocd/flash/erase_chip'),
+      erase:      (address: string, size: string)             => r('POST', '/openocd/flash/erase', { address, size }),
+      program: (filename: string, address: string, verify: boolean) =>
+        r('POST', '/openocd/flash/program', { filename, address, verify }),
+      read:    (address: string, size: string, output_filename: string) =>
+        r('POST', '/openocd/flash/read', { address, size, output_filename }),
+      verify:  (filename: string, address: string)         => r('POST', '/openocd/flash/verify', { filename, address }),
+      reset:   ()                                          => r('POST', '/openocd/flash/reset'),
+      info:    ()                                          => r('GET', '/openocd/flash/info'),
+      downloadUrl: (filename: string) => `${BASE}${prefix}/openocd/flash/download/${filename}`,
+      patchBytes: (address: number, data: number[]) => r<{ ok: boolean; result: string; page_size?: number; page_base?: string }>('POST', '/openocd/flash/patch_bytes', { address, data }),
+      pageSize:   () => r<{ ok: boolean; page_size: number }>('GET', '/openocd/flash/page_size'),
+    },
+
+    memory: {
+      read:  (address: string, size: number) => r<{ ok: boolean; rows: Array<{ address: string; words: number[] }> }>('POST', '/openocd/memory/read', { address, size }),
+      write: (address: string, value: string) => r('POST', '/openocd/memory/write', { address, value }),
+    },
+  }
 }
+
+export type OcdApi = ReturnType<typeof createOCDApi>
+
+export const openocd = createOCDApi()
 
 // ── Settings ─────────────────────────────────────────────────────────────────
 
