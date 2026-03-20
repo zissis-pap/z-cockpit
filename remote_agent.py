@@ -383,9 +383,14 @@ class AgentOpenOCDManager:
         return resp
 
     async def flash_program(self, filename: str, address: str, verify: bool = True) -> str:
-        verify_flag = " verify" if verify else ""
-        resp = await self.send_command(f"program {filename}{verify_flag} reset", timeout=120.0)
+        # Pass address explicitly so OpenOCD programs at the correct location.
+        # Use verify_image separately so verification also targets the same address.
+        resp = await self.send_command(f"program {filename} {address}", timeout=120.0)
         await self.log(f"program -> {resp}", "info" if "error" not in resp.lower() else "error")
+        if verify:
+            vresp = await self.send_command(f"verify_image {filename} {address}", timeout=60.0)
+            await self.log(f"verify -> {vresp}", "info" if "error" not in vresp.lower() else "error")
+            resp = resp + "\n" + vresp
         return resp
 
     async def flash_read(self, filename: str, address: str, size: str) -> str:
@@ -678,7 +683,6 @@ class FlashProgramReq(BaseModel):
     filename: str
     address: str = "0x08000000"
     verify: bool = True
-    do_reset: bool = True
 
 
 @app.post("/api/openocd/flash/program", dependencies=[AuthDep])
@@ -687,8 +691,6 @@ async def flash_program(req: FlashProgramReq):
     if not path.exists():
         return {"ok": False, "error": f"File not found: {req.filename}"}
     result = await ocd_mgr.flash_program(str(path), req.address, req.verify)
-    if req.do_reset:
-        await ocd_mgr.send_command("reset run")
     return {"ok": "error" not in result.lower(), "result": result}
 
 

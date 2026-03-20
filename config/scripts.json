@@ -24,9 +24,9 @@
     "files": {}
   },
   {
-    "id": 1774001916412,
-    "name": "new script",
-    "src": "[\n  {\n    \"type\": \"openocd_start\",\n    \"interface\": \"interface/stlink.cfg\",\n    \"target\": \"target/stm32l4x.cfg\"\n  },\n  {\n    \"type\": \"uart_connect\",\n    \"port\": \"/dev/ttyUSB0\",\n    \"baud_rate\": 115200\n  },\n  {\n    \"type\": \"halt\"\n  },\n  {\n    \"type\": \"delay\",\n    \"seconds\": 1\n  },\n  { \"type\": \"flash\", \"file_path\": \"/home/zissis/Desktop/rps_lora_stm32l451_gen_1_5.bin\", \"address\": \"0x08008000\", \"verify\": true, \"do_reset\": false },\n  {\n    \"type\": \"resume\"\n  }\n]",
+    "id": 1774006211867,
+    "name": "Parking 1V5",
+    "src": "[\n  {\n    \"type\": \"openocd_start\",\n    \"interface\": \"interface/stlink.cfg\",\n    \"target\": \"target/stm32l4x.cfg\"\n  },\n  {\n    \"type\": \"uart_connect\",\n    \"port\": \"/dev/ttyUSB0\",\n    \"baud_rate\": 115200\n  },\n  {\n    \"type\": \"halt\"\n  },\n  {\n    \"type\": \"delay\",\n    \"seconds\": 1\n  },\n  { \"type\": \"flash\", \"file_path\": \"/home/zissis/Desktop/stm32l451_bootloader.bin\", \"address\": \"0x08000000\", \"verify\": true, \"do_reset\": false },\n  { \"type\": \"flash\", \"file_path\": \"/home/zissis/Desktop/rps_lora_stm32l451_gen_1_5.bin\", \"address\": \"0x08008000\", \"verify\": true, \"do_reset\": false },\n  {\n    \"type\": \"resume\"\n  }\n]",
     "files": {}
   }
 ]

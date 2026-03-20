@@ -265,11 +265,15 @@ class OpenOCDManager:
         return resp
 
     async def flash_program(self, filename: str, address: str, verify: bool = True) -> str:
-        verify_flag = " verify" if verify else ""
-        # No "exit" — keeps OpenOCD running so the session stays alive after programming
-        cmd = f"program {filename}{verify_flag} reset"
+        # Pass address explicitly so OpenOCD programs at the correct location.
+        # Use verify_image separately so verification also targets the same address.
+        cmd = f"program {filename} {address}"
         resp = await self.send_command(cmd, timeout=120.0)
         await self.log(f"program -> {resp}", "info" if "error" not in resp.lower() else "error")
+        if verify:
+            vresp = await self.send_command(f"verify_image {filename} {address}", timeout=60.0)
+            await self.log(f"verify -> {vresp}", "info" if "error" not in vresp.lower() else "error")
+            resp = resp + "\n" + vresp
         return resp
 
     async def flash_read(self, filename: str, address: str, size: str) -> str:
