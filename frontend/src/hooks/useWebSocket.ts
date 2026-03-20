@@ -26,8 +26,9 @@ export function useWebSocket(path: string, onMessage: OnMessage, enabled = true)
     }
 
     ws.onclose = () => {
+      clearInterval(pingInterval)
       if (!mountedRef.current) return
-      // Reconnect after 2 s
+      if (wsRef.current !== ws) return  // stale connection — path changed, don't reconnect
       reconnectTimer.current = setTimeout(connect, 2000)
     }
 
@@ -41,11 +42,6 @@ export function useWebSocket(path: string, onMessage: OnMessage, enabled = true)
     const pingInterval = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) ws.send('ping')
     }, 20000)
-
-    const origOnClose = ws.onclose
-    ws.addEventListener('close', () => clearInterval(pingInterval))
-    // suppress TS unused var:
-    void origOnClose
   }, [path])
 
   useEffect(() => {
@@ -54,7 +50,9 @@ export function useWebSocket(path: string, onMessage: OnMessage, enabled = true)
     return () => {
       mountedRef.current = false
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
-      wsRef.current?.close()
+      const ws = wsRef.current
+      wsRef.current = null  // nullify before close so onclose skips stale reconnect
+      ws?.close()
     }
   }, [connect, enabled])
 }

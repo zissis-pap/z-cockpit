@@ -32,6 +32,8 @@ export default function OpenOCDTab() {
   const [firmwareBaseAddr, setFirmwareBaseAddr]  = useState('0x08000000')
   const [remoteList, setRemoteList] = useState<RemoteAgent[]>([])
   const [selectedRemoteId, setSelectedRemoteId] = useState<string | undefined>(undefined)
+  const [agentReachable, setAgentReachable] = useState<boolean | null>(null)
+  const wsStatusReceived = useRef(false)   // true once WS delivers first status for this target
   const prevConnected = useRef(false)
 
   // Load remote agents once
@@ -39,14 +41,38 @@ export default function OpenOCDTab() {
     remotes.list().then(r => setRemoteList(r.remotes)).catch(() => {})
   }, [])
 
-  // Reset status when switching target
-  const prevRemoteId = useRef<string | undefined>(undefined)
+  // On target switch: reset, probe reachability, and fetch real OpenOCD status immediately
   useEffect(() => {
-    if (prevRemoteId.current !== selectedRemoteId) {
-      setStatus({ server: 'stopped', connected: false })
-      setMemoryRows([])
-      prevRemoteId.current = selectedRemoteId
+    setStatus({ server: 'stopped', connected: false })
+    setMemoryRows([])
+    wsStatusReceived.current = false   // reset for new target
+
+    const ocdApi = createOCDApi(selectedRemoteId)
+
+    if (!selectedRemoteId) {
+      setAgentReachable(null)
+      // Sync local status without waiting for the WebSocket
+      ocdApi.status().then((s: any) => {
+        if (s?.server) setStatus({ server: s.server, connected: s.connected ?? false, pid: s.pid })
+      }).catch(() => {})
+      return
     }
+
+    setAgentReachable(null)
+    // Run reachability test and status fetch in parallel — avoids the
+    // sequential 2-3s delay that could let a stale HTTP response overwrite
+    // the correct status already delivered by the WebSocket.
+    Promise.all([
+      remotes.test(selectedRemoteId).catch(() => ({ ok: false })),
+      ocdApi.status().catch(() => null),
+    ]).then(([testResult, statusResult]: [any, any]) => {
+      setAgentReachable(testResult.ok)
+      // Only apply HTTP status if the WS hasn't already delivered one —
+      // prevents a slow HTTP response from overwriting WS-provided "running".
+      if (statusResult?.server && !wsStatusReceived.current) {
+        setStatus({ server: statusResult.server, connected: statusResult.connected ?? false, pid: statusResult.pid })
+      }
+    })
   }, [selectedRemoteId])
 
   // Clear memory rows when board disconnects
@@ -73,6 +99,7 @@ export default function OpenOCDTab() {
     if (msg.type === 'log') {
       addLog(msg.text ?? '', msg.level)
     } else if (msg.type === 'status') {
+      wsStatusReceived.current = true
       setStatus({
         server: (msg.server ?? 'stopped') as OpenOCDStatus['server'],
         connected: msg.connected ?? false,
@@ -106,7 +133,18 @@ export default function OpenOCDTab() {
 
         {/* Target selector */}
         <div className="panel">
-          <div className="panel-header">Target</div>
+          <div className="panel-header flex items-center justify-between">
+            <span>Target</span>
+            {selectedRemoteId && (
+              <span className="flex items-center gap-1.5 font-normal normal-case text-xs text-zinc-400">
+                <span className={
+                  agentReachable === null ? 'status-dot-amber' :
+                  agentReachable ? 'status-dot-green' : 'status-dot-red'
+                } />
+                {agentReachable === null ? 'checking…' : agentReachable ? 'reachable' : 'unreachable'}
+              </span>
+            )}
+          </div>
           <div className="p-2">
             <select
               className="select w-full text-xs"

@@ -532,7 +532,8 @@ export default function ScriptRunner() {
           <div className="text-red-400 text-xs mono px-2 py-1 bg-red-500/10 rounded">{srcError}</div>
         )}
         <textarea
-          className="flex-1 bg-[#0f1117] text-zinc-300 mono text-xs p-3 resize-none focus:outline-none border border-[#30363d] rounded"
+          className="bg-[#0f1117] text-zinc-300 mono text-xs p-3 resize-none focus:outline-none border border-[#30363d] rounded"
+          style={{ minHeight: '480px' }}
           value={src}
           onChange={e => { setSrc(e.target.value); setDirty(true) }}
           spellCheck={false}

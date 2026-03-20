@@ -37,10 +37,11 @@ function byteClass(b: number): string {
 }
 
 function flattenRows(rows: MemoryRow[]): { baseAddr: number; data: Uint8Array } | null {
-  if (rows.length === 0) return null
-  const baseAddr = parseInt(rows[0].address, 16)
+  const validRows = rows.filter(r => !isNaN(parseInt(r.address, 16)) && r.words.length > 0)
+  if (validRows.length === 0) return null
+  const baseAddr = parseInt(validRows[0].address, 16)
   const allBytes: number[] = []
-  for (const row of rows) allBytes.push(...wordsToBytes(row.words))
+  for (const row of validRows) allBytes.push(...wordsToBytes(row.words))
   return { baseAddr, data: new Uint8Array(allBytes) }
 }
 

@@ -137,6 +137,11 @@ async def proxy_openocd_ws(websocket: WebSocket, remote_id: str):
             )
             for t in pending:
                 t.cancel()
+            for t in done:
+                try:
+                    t.exception()  # consume to suppress "exception never retrieved" warning
+                except Exception:
+                    pass
     except Exception:
         pass
     finally:

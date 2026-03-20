@@ -287,9 +287,9 @@ class AgentOpenOCDManager:
 
     async def get_status(self) -> dict:
         running = self.process is not None and self.process.returncode is None
-        if running and self.server_status == "starting":
+        if running:
             self.server_status = "running"
-        elif not running and self.server_status != "stopped":
+        elif self.server_status != "stopped":
             self.server_status = "stopped"
         return {"server": self.server_status, "connected": self.connected,
                 "pid": self.process.pid if running else None}
@@ -482,6 +482,7 @@ class AgentOpenOCDManager:
             addr_str = parts[0].strip()
             words_str = parts[1].strip().split()
             try:
+                int(addr_str, 16)  # validate address — skips error lines like "ERROR: ..."
                 words = [int(w, 16) for w in words_str if len(w) == 8]
                 rows.append({"address": addr_str, "words": words})
             except ValueError:
@@ -495,16 +496,34 @@ class AgentOpenOCDManager:
         return resp
 
     async def _read_output(self):
+        # Use chunked reads instead of readline() to avoid asyncio's 64 KB
+        # StreamReader line-length limit (LimitOverrunError on verbose output).
+        buf = b""
         try:
-            async for line in self.process.stdout:
-                text = line.decode("utf-8", errors="replace").rstrip()
-                level = "error" if any(w in text.lower() for w in ("error", "failed")) else "info"
-                await self.log(text, level)
+            while True:
+                chunk = await self.process.stdout.read(4096)
+                if not chunk:
+                    break  # EOF — process has exited
+                buf += chunk
+                while b"\n" in buf:
+                    line, buf = buf.split(b"\n", 1)
+                    text = line.decode("utf-8", errors="replace").rstrip()
+                    if text:
+                        level = "error" if any(w in text.lower() for w in ("error", "failed")) else "info"
+                        await self.log(text, level)
         except asyncio.CancelledError:
             pass
+        except Exception:
+            pass
         finally:
-            self.server_status = "stopped"
-            await self.broadcast({"type": "status", "server": "stopped", "connected": False})
+            # Only broadcast stopped if the process has actually exited.
+            # If the task was cancelled (e.g. by stop()) the process is still
+            # alive — let stop() handle the broadcast instead.
+            proc_exited = self.process is None or self.process.returncode is not None
+            if proc_exited:
+                self.server_status = "stopped"
+                self.connected = False
+                await self.broadcast({"type": "status", "server": "stopped", "connected": False})
 
 
 ocd_mgr = AgentOpenOCDManager()

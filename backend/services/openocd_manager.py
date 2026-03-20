@@ -127,9 +127,9 @@ class OpenOCDManager:
 
     async def get_status(self):
         running = self.process is not None and self.process.returncode is None
-        if running and self.server_status == "starting":
+        if running:
             self.server_status = "running"
-        elif not running and self.server_status != "stopped":
+        elif self.server_status != "stopped":
             self.server_status = "stopped"
         return {
             "server": self.server_status,
@@ -140,18 +140,28 @@ class OpenOCDManager:
     async def _read_process_output(self):
         """Stream process stdout/stderr to WebSocket clients."""
         assert self.process and self.process.stdout
+        # Use chunked reads to avoid asyncio's 64 KB readline limit
+        # (LimitOverrunError on verbose/debug OpenOCD output).
+        buf = b""
         try:
-            async for line in self.process.stdout:
-                text = line.decode("utf-8", errors="replace").rstrip()
-                level = "info"
-                tl = text.lower()
-                if "error" in tl or "failed" in tl:
-                    level = "error"
-                elif "warn" in tl:
-                    level = "warn"
-                elif "info" in tl:
-                    level = "info"
-                await self.log(text, level)
+            while True:
+                chunk = await self.process.stdout.read(4096)
+                if not chunk:
+                    break  # EOF — process has exited
+                buf += chunk
+                while b"\n" in buf:
+                    line, buf = buf.split(b"\n", 1)
+                    text = line.decode("utf-8", errors="replace").rstrip()
+                    if not text:
+                        continue
+                    tl = text.lower()
+                    if "error" in tl or "failed" in tl:
+                        level = "error"
+                    elif "warn" in tl:
+                        level = "warn"
+                    else:
+                        level = "info"
+                    await self.log(text, level)
         except asyncio.CancelledError:
             pass
         except Exception as e:
