@@ -99,8 +99,8 @@ async def proxy_http(remote_id: str, path: str, request: Request):
 
 # ── WebSocket proxy ───────────────────────────────────────────────────────────
 
-@ws_router.websocket("/ws/remotes/{remote_id}/openocd")
-async def proxy_openocd_ws(websocket: WebSocket, remote_id: str):
+async def _proxy_ws(websocket: WebSocket, remote_id: str, ws_path: str):
+    """Bidirectionally proxy a WebSocket connection to a remote agent endpoint."""
     cfg = remotes_manager.get(remote_id)
     if not cfg:
         await websocket.close(code=1008, reason="Remote not found")
@@ -112,7 +112,7 @@ async def proxy_openocd_ws(websocket: WebSocket, remote_id: str):
     if cfg.get("token"):
         extra_headers["X-Token"] = cfg["token"]
 
-    remote_url = f"ws://{cfg['host']}:{cfg['port']}/ws/openocd"
+    remote_url = f"ws://{cfg['host']}:{cfg['port']}/{ws_path}"
 
     try:
         async with websockets.connect(remote_url, additional_headers=extra_headers) as remote_ws:
@@ -139,7 +139,7 @@ async def proxy_openocd_ws(websocket: WebSocket, remote_id: str):
                 t.cancel()
             for t in done:
                 try:
-                    t.exception()  # consume to suppress "exception never retrieved" warning
+                    t.exception()
                 except Exception:
                     pass
     except Exception:
@@ -149,3 +149,13 @@ async def proxy_openocd_ws(websocket: WebSocket, remote_id: str):
             await websocket.close()
         except Exception:
             pass
+
+
+@ws_router.websocket("/ws/remotes/{remote_id}/openocd")
+async def proxy_openocd_ws(websocket: WebSocket, remote_id: str):
+    await _proxy_ws(websocket, remote_id, "ws/openocd")
+
+
+@ws_router.websocket("/ws/remotes/{remote_id}/serial")
+async def proxy_serial_ws(websocket: WebSocket, remote_id: str):
+    await _proxy_ws(websocket, remote_id, "ws/serial")

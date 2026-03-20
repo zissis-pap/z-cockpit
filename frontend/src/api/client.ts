@@ -97,15 +97,24 @@ export const projects = {
 
 // ── Serial ───────────────────────────────────────────────────────────────────
 
-export const serial = {
-  ports:      () => req<{ ok: boolean; ports: Array<{ device: string; description: string }> }>('GET', '/serial/ports'),
-  connect:    (body: object) => req('POST', '/serial/connect', body),
-  disconnect: ()             => req('POST', '/serial/disconnect'),
-  status:     ()             => req('GET',  '/serial/status'),
-  send:       (body: object) => req('POST', '/serial/send', body),
-  logStart:   (path: string) => req<{ ok: boolean; path?: string; error?: string }>('POST', '/serial/log/start', { path }),
-  logStop:    ()             => req<{ ok: boolean; path?: string }>('POST', '/serial/log/stop'),
+export function createSerialApi(remoteId?: string) {
+  const prefix = remoteId ? `/remotes/${remoteId}/proxy/api` : ''
+  function r<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
+    return req<T>(method, `${prefix}${path}`, body)
+  }
+  return {
+    ports:      () => r<{ ok: boolean; ports: Array<{ device: string; description: string }> }>('GET', '/serial/ports'),
+    connect:    (body: object) => r('POST', '/serial/connect', body),
+    disconnect: ()             => r('POST', '/serial/disconnect'),
+    status:     ()             => r('GET',  '/serial/status'),
+    send:       (body: object) => r('POST', '/serial/send', body),
+    logStart:   (path: string) => r<{ ok: boolean; path?: string; error?: string }>('POST', '/serial/log/start', { path }),
+    logStop:    ()             => r<{ ok: boolean; path?: string }>('POST', '/serial/log/stop'),
+  }
 }
+
+export type SerialApi = ReturnType<typeof createSerialApi>
+export const serial = createSerialApi()
 
 // ── MQTT ──────────────────────────────────────────────────────────────────────
 

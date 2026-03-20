@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, KeyboardEvent } from 'react'
-import { serial } from '../../api/client'
+import { createSerialApi, remotes } from '../../api/client'
+import type { RemoteAgent } from '../../api/client'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { BAUD_RATES } from '../../data/mcuConfigs'
 
@@ -385,6 +386,9 @@ export default function SerialTab() {
   const [logPath, setLogPath]          = useState(() =>
     `~/serial_${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.log`
   )
+  const [remoteList, setRemoteList]         = useState<RemoteAgent[]>([])
+  const [selectedRemoteId, setSelectedRemoteId] = useState<string | undefined>(undefined)
+  const [agentReachable, setAgentReachable] = useState<boolean | null>(null)
 
   // VT100 screen buffer — kept in a ref to avoid re-render per character,
   // with a tick counter to trigger repaints.
@@ -396,7 +400,41 @@ export default function SerialTab() {
   const bottomRef    = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => { refreshPorts() }, [])
+  // Load remote agents once
+  useEffect(() => {
+    remotes.list().then(r => setRemoteList(r.remotes)).catch(() => {})
+  }, [])
+
+  const serialApi = createSerialApi(selectedRemoteId)
+
+  // On target switch: reset state, probe reachability, refresh ports
+  useEffect(() => {
+    setStatus({ connected: false, port: '', baud: 115200 })
+    setPorts([])
+    setSelectedPort('')
+
+    if (!selectedRemoteId) {
+      setAgentReachable(null)
+      serialApi.ports().then(r => {
+        setPorts(r.ports)
+        if (r.ports.length > 0) setSelectedPort(r.ports[0].device)
+      }).catch(() => {})
+      return
+    }
+
+    setAgentReachable(null)
+    Promise.all([
+      remotes.test(selectedRemoteId).catch(() => ({ ok: false })),
+      serialApi.ports().catch(() => null),
+    ]).then(([testResult, portsResult]: [any, any]) => {
+      setAgentReachable(testResult.ok)
+      if (portsResult?.ports) {
+        setPorts(portsResult.ports)
+        if (portsResult.ports.length > 0) setSelectedPort(portsResult.ports[0].device)
+      }
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRemoteId])
 
   useEffect(() => {
     if (autoScroll && !vt100) bottomRef.current?.scrollIntoView({ block: 'end' })
@@ -404,7 +442,7 @@ export default function SerialTab() {
 
   async function refreshPorts() {
     try {
-      const res = await serial.ports()
+      const res = await serialApi.ports()
       setPorts(res.ports)
       if (res.ports.length > 0 && !selectedPort) setSelectedPort(res.ports[0].device)
     } catch { /* ignore */ }
@@ -429,22 +467,23 @@ export default function SerialTab() {
     }
   }, [])
 
-  useWebSocket('/ws/serial', handleWsMessage)
+  const wsUrl = selectedRemoteId ? `/ws/remotes/${selectedRemoteId}/serial` : '/ws/serial'
+  useWebSocket(wsUrl, handleWsMessage)
 
   async function startLog() {
-    const res = await serial.logStart(logPath)
+    const res = await serialApi.logStart(logPath)
     if (res.ok) setLogFileName(res.path ?? logPath)
   }
 
   async function stopLog() {
-    await serial.logStop()
+    await serialApi.logStop()
     setLogFileName('')
   }
 
   async function connect() {
-    await serial.connect({ port: selectedPort, baud_rate: baudRate, bytesize, parity, stopbits })
+    await serialApi.connect({ port: selectedPort, baud_rate: baudRate, bytesize, parity, stopbits })
   }
-  async function disconnect() { await serial.disconnect() }
+  async function disconnect() { await serialApi.disconnect() }
 
   async function send() {
     if (!input.trim() || !status.connected) return
@@ -459,9 +498,11 @@ export default function SerialTab() {
     if (!vt100) {
       setLines(prev => [...prev.slice(-5000), { id: lineSeq++, timestamp: ts, direction: 'tx', text: txText, hex: txHex }])
     }
-    await serial.send({ data: input, data_type: dataType, line_ending: lineEnding })
+    await serialApi.send({ data: input, data_type: dataType, line_ending: lineEnding })
     setInput('')
   }
+
+  const selectedRemote = remoteList.find(r => r.id === selectedRemoteId)
 
   function handleKey(e: KeyboardEvent<HTMLInputElement>) { if (e.key === 'Enter') send() }
 
@@ -512,6 +553,40 @@ export default function SerialTab() {
 
   return (
     <div className="flex flex-col h-full p-2 gap-2 overflow-hidden">
+
+      {/* Target selector */}
+      <div className="panel shrink-0">
+        <div className="panel-header flex items-center justify-between">
+          <span>Target</span>
+          {selectedRemoteId && (
+            <span className="flex items-center gap-1.5 font-normal normal-case text-xs text-zinc-400">
+              <span className={
+                agentReachable === null ? 'status-dot-amber' :
+                agentReachable ? 'status-dot-green' : 'status-dot-red'
+              } />
+              {agentReachable === null ? 'checking…' : agentReachable ? 'reachable' : 'unreachable'}
+            </span>
+          )}
+        </div>
+        <div className="p-2 flex items-center gap-2">
+          <select
+            className="select text-xs flex-1"
+            value={selectedRemoteId ?? ''}
+            onChange={e => setSelectedRemoteId(e.target.value || undefined)}
+          >
+            <option value="">Local</option>
+            {remoteList.map(r => (
+              <option key={r.id} value={r.id}>{r.name} ({r.host}:{r.port})</option>
+            ))}
+          </select>
+          {selectedRemote && (
+            <span className="text-[10px] text-zinc-500 truncate">
+              via {selectedRemote.host}:{selectedRemote.port}
+              {selectedRemote.has_token ? ' 🔒' : ''}
+            </span>
+          )}
+        </div>
+      </div>
 
       {/* Connection bar */}
       <div className="panel shrink-0">
