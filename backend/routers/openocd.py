@@ -3,8 +3,7 @@ OpenOCD REST API routes and WebSocket endpoint.
 """
 import os
 from pathlib import Path
-from typing import Optional
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, UploadFile, File, Form
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, UploadFile, File
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 

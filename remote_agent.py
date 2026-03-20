@@ -19,17 +19,17 @@ Usage:
 """
 import argparse
 import asyncio
-import json
 import os
+import re
 import sys
 import tempfile
 import threading
-import uuid
 from pathlib import Path
 from typing import Optional, Set
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Header, HTTPException, Depends
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -395,7 +395,6 @@ class AgentOpenOCDManager:
         return await self.send_command("flash info 0")
 
     async def flash_get_page_size(self) -> int:
-        import re
         raw = await self.send_command("flash info 0")
         sizes = re.findall(r'\(0x([0-9a-fA-F]+)\s+\d+', raw)
         if sizes:
@@ -403,7 +402,6 @@ class AgentOpenOCDManager:
         return 2048
 
     async def flash_patch_bytes(self, address: int, data: bytes) -> dict:
-        import os
         page_size = await self.flash_get_page_size()
         start_page = (address // page_size) * page_size
         end_page = (((address + len(data) - 1) // page_size) + 1) * page_size
@@ -447,7 +445,6 @@ class AgentOpenOCDManager:
         }
 
     async def memory_read(self, address: str, size: int) -> list:
-        import os
         LARGE_THRESHOLD = 1024
         addr_int = int(address, 16) if address.lower().startswith("0x") else int(address)
 
@@ -740,7 +737,6 @@ async def flash_reset():
 
 @app.get("/api/openocd/flash/download/{filename}", dependencies=[AuthDep])
 async def flash_download(filename: str):
-    from fastapi.responses import FileResponse
     path = UPLOAD_DIR / filename
     if not path.exists():
         return {"ok": False, "error": "File not found"}

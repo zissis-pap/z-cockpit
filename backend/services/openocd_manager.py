@@ -4,7 +4,7 @@ OpenOCD process manager with async telnet client and WebSocket broadcasting.
 import asyncio
 import json
 import os
-import subprocess
+import re
 import tempfile
 from pathlib import Path
 from typing import Optional, Set
@@ -167,9 +167,10 @@ class OpenOCDManager:
         except Exception as e:
             await self.log(f"Log reader error: {e}", "error")
         finally:
-            rc = self.process.returncode if self.process else None
-            self.server_status = "stopped"
-            await self.broadcast({"type": "status", "server": "stopped", "connected": False, "returncode": rc})
+            proc_exited = self.process is None or self.process.returncode is not None
+            if proc_exited:
+                self.server_status = "stopped"
+                await self.broadcast({"type": "status", "server": "stopped", "connected": False})
 
     # ──────────────────────────────────────────────────────────────────────────
     # Telnet (command) connection
@@ -333,7 +334,7 @@ class OpenOCDManager:
             addr_str = parts[0].strip()
             words_str = parts[1].strip().split()
             try:
-                addr = int(addr_str, 16)
+                int(addr_str, 16)  # validate — skips non-address lines
                 words = [int(w, 16) for w in words_str if len(w) == 8]
                 rows.append({"address": addr_str, "words": words})
             except ValueError:
@@ -351,7 +352,6 @@ class OpenOCDManager:
 
     async def flash_get_page_size(self) -> int:
         """Query flash info 0 and return the minimum sector/page size in bytes."""
-        import re
         raw = await self.send_command("flash info 0")
         # Parse lines like: #  0: 0x00000000 (0x400 1024B) erased
         sizes = re.findall(r'\(0x([0-9a-fA-F]+)\s+\d+', raw)
@@ -365,7 +365,6 @@ class OpenOCDManager:
         Reads the affected page(s), applies changes, erases, reprograms.
         Returns {ok, result, page_size, page_base}.
         """
-        import os
         page_size = await self.flash_get_page_size()
         start_page = (address // page_size) * page_size
         end_page = (((address + len(data) - 1) // page_size) + 1) * page_size
