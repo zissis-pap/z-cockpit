@@ -103,6 +103,7 @@ class AgentSerialManager:
         self._rx_chunks: list[str] = []
         self._rx_offset: int = 0          # global chunk index (monotonically increasing)
         self._rx_lock = threading.Lock()
+        self._line_buf: str = ""          # incomplete line accumulator
 
     # ── WebSocket management ───────────────────────────────────────────────────
 
@@ -143,6 +144,7 @@ class AgentSerialManager:
             with self._rx_lock:
                 self._rx_chunks = []
                 self._rx_offset = 0
+            self._line_buf = ""
             self._loop = asyncio.get_event_loop()
             self._stop_event.clear()
             self._read_thread = threading.Thread(target=self._read_loop, daemon=True)
@@ -201,15 +203,27 @@ class AgentSerialManager:
             text = data.decode("utf-8", errors="replace")
         except Exception:
             text = ""
-        hex_str = data.hex(" ").upper()
-        with self._rx_lock:
-            self._rx_chunks.append(text)
-            self._rx_offset += 1
-            # Keep at most 2000 chunks in memory
-            if len(self._rx_chunks) > 2000:
-                excess = len(self._rx_chunks) - 2000
-                self._rx_chunks = self._rx_chunks[excess:]
-        await self._broadcast({"type": "data", "hex": hex_str, "text": text, "raw": list(data)})
+
+        self._line_buf += text
+        lines = self._line_buf.split("\n")
+        # All but the last element are complete lines; the last is a partial remainder.
+        complete, self._line_buf = lines[:-1], lines[-1]
+
+        for line in complete:
+            chunk = line + "\n"
+            chunk_bytes = chunk.encode("utf-8", errors="replace")
+            with self._rx_lock:
+                self._rx_chunks.append(chunk)
+                self._rx_offset += 1
+                if len(self._rx_chunks) > 2000:
+                    excess = len(self._rx_chunks) - 2000
+                    self._rx_chunks = self._rx_chunks[excess:]
+            await self._broadcast({
+                "type": "data",
+                "hex": chunk_bytes.hex(" ").upper(),
+                "text": chunk,
+                "raw": list(chunk_bytes),
+            })
 
 
 serial_mgr = AgentSerialManager()

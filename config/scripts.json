@@ -22,5 +22,11 @@
     "name": "erase + flash",
     "src": "[\n  {\n    \"type\": \"openocd_start\",\n    \"interface\": \"interface/stlink.cfg\",\n    \"target\": \"target/stm32l4x.cfg\"\n  },\n  {\n    \"type\": \"halt\"\n  },\n  {\n    \"type\": \"erase\"\n  },\n  {\n    \"type\": \"flash\",\n    \"file_key\": \"firmware.bin\",\n    \"address\": \"0x08000000\",\n    \"verify\": true,\n    \"do_reset\": true\n  },\n  {\n    \"type\": \"log\",\n    \"message\": \"Erase + flash complete\"\n  }\n]",
     "files": {}
+  },
+  {
+    "id": 1774001916412,
+    "name": "new script",
+    "src": "[\n  {\n    \"type\": \"openocd_start\",\n    \"interface\": \"interface/stlink.cfg\",\n    \"target\": \"target/stm32l4x.cfg\"\n  },\n  {\n    \"type\": \"uart_connect\",\n    \"port\": \"/dev/ttyUSB0\",\n    \"baud_rate\": 115200\n  },\n  {\n    \"type\": \"halt\"\n  },\n  {\n    \"type\": \"delay\",\n    \"seconds\": 1\n  },\n  { \"type\": \"flash\", \"file_path\": \"/home/zissis/Desktop/rps_lora_stm32l451_gen_1_5.bin\", \"address\": \"0x08008000\", \"verify\": true, \"do_reset\": false },\n  {\n    \"type\": \"resume\"\n  }\n]",
+    "files": {}
   }
 ]

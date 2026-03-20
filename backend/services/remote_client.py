@@ -70,6 +70,12 @@ class RemoteClient:
 
     # ── OpenOCD ────────────────────────────────────────────────────────────────
 
+    async def get_openocd_status(self) -> dict:
+        return await self._get("/api/openocd/status")
+
+    async def get_serial_status(self) -> dict:
+        return await self._get("/api/serial/status")
+
     async def start(self, config: dict) -> dict:
         result = await self._post("/api/openocd/start", **config)
         return result

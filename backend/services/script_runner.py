@@ -207,17 +207,20 @@ class ScriptRunner:
             config = {"executable": "openocd", "interface_config": iface, "target_config": tgt}
 
             if remote:
-                result = await remote.start(config)
-                if not result.get("ok"):
-                    raise RuntimeError(result.get("error", "Failed to start OpenOCD on remote"))
-                await asyncio.sleep(1.0)
-                for _ in range(30):
-                    if self._stop_flag: raise asyncio.CancelledError("stopped")
-                    conn = await remote.connect()
-                    if conn.get("ok"): break
-                    await asyncio.sleep(0.5)
-                else:
-                    raise RuntimeError("Remote OpenOCD did not become ready in time")
+                remote_status = await remote.get_openocd_status()
+                if remote_status.get("server") != "running":
+                    result = await remote.start(config)
+                    if not result.get("ok"):
+                        raise RuntimeError(result.get("error", "Failed to start OpenOCD on remote"))
+                    await asyncio.sleep(1.0)
+                if not remote_status.get("connected", False):
+                    for _ in range(30):
+                        if self._stop_flag: raise asyncio.CancelledError("stopped")
+                        conn = await remote.connect()
+                        if conn.get("ok"): break
+                        await asyncio.sleep(0.5)
+                    else:
+                        raise RuntimeError("Remote OpenOCD did not become ready in time")
             else:
                 if openocd_manager.server_status != "running":
                     result = await openocd_manager.start(config)
@@ -295,9 +298,15 @@ class ScriptRunner:
             port = step.get("port", "")
             baud = int(step.get("baud_rate", 115200))
             if remote:
-                if remote.serial_connected and remote.serial_port == port:
+                serial_status = await remote.get_serial_status()
+                actual_connected = serial_status.get("connected", False)
+                actual_port = serial_status.get("port", "")
+                if actual_connected:
+                    remote.serial_connected = True
+                    remote.serial_port = actual_port
+                if actual_connected and actual_port == port:
                     return "already connected"
-                if remote.serial_connected:
+                if actual_connected:
                     await remote.disconnect_serial()
                 result = await remote.connect_serial(port, baud)
                 if not result.get("ok"):
