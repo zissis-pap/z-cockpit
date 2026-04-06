@@ -1,0 +1,14 @@
+[Unit]
+Description=Z-Cockpit
+After=network.target
+
+[Service]
+Type=simple
+User=zissis
+WorkingDirectory=/home/zissis/Projects/Personal/z-cockpit
+ExecStart=/home/zissis/Projects/Personal/z-cockpit/start.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

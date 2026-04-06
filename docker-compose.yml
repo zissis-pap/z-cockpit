@@ -1,0 +1,27 @@
+services:
+  z-cockpit:
+    build: .
+    image: z-cockpit:latest
+    container_name: z-cockpit
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist remotes.json and scripts.json across container rebuilds
+      - ./config:/app/config
+      # Persist account settings (~/.config/z-cockpit/settings.json)
+      - z-cockpit-settings:/root/.config/z-cockpit
+    # Grant access to serial ports and USB devices (OpenOCD, ST-Link, etc.)
+    # Add or remove specific devices as needed.
+    # Uncomment the lines below that match your hardware:
+    #
+    # devices:
+    #   - /dev/ttyUSB0:/dev/ttyUSB0
+    #   - /dev/ttyACM0:/dev/ttyACM0
+    #   - /dev/bus/usb:/dev/bus/usb     # full USB bus (needed for OpenOCD)
+    #
+    # Alternatively, use privileged mode to expose all host devices:
+    privileged: true
+
+volumes:
+  z-cockpit-settings:

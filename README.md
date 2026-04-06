@@ -9,12 +9,12 @@ A modern, web-based embedded development toolkit that brings essential embedded 
 ### 🎯 Core Functionality
 
 - **OpenOCD Integration** - Flash, erase, read, and debug microcontrollers via OpenOCD
-- **Serial Terminal** - VT100-compatible terminal with hex/ASCII display, ANSI color support
+- **Serial Terminal** - Terminal with hex/ASCII display and timestamped logging
 - **MQTT Client** - Connect to multiple brokers, subscribe to topics, view JSON payloads
 - **Git Projects** - Manage GitHub/Bitbucket repositories, clone, pull, commit, push
 - **Format Converter** - Instant conversion between ASCII, Hex, Binary, Decimal, Base64
 - **Binary Editor** - Hex editor with virtual scrolling, undo/redo, compare mode
-- **Network Tools** - Interface info, network scanner, packet capture with BPF filters
+- **Network Tools** - Interface info and network scanner
 - **Script Runner** - JSON-based step-by-step automation for flashing, serial, and OpenOCD operations
 
 ### 🌐 Remote Access
@@ -85,6 +85,8 @@ z-cockpit/
 ├── remote_agent.py       # Standalone remote agent
 ├── requirements.txt      # Python dependencies
 ├── version.json          # Version info
+├── Dockerfile            # Multi-stage container build
+├── docker-compose.yml    # Container orchestration
 ├── start.sh              # Startup script
 ├── setup.sh              # Setup script
 └── README.md
@@ -95,13 +97,12 @@ z-cockpit/
 ### Prerequisites
 
 - Python 3.9+
-- Node.js 18+ (for frontend)
+- Node.js 24 LTS (for frontend)
 - OpenOCD (for flash operations)
 - pip (Python package manager)
 
 **Optional dependencies:**
 - `aiomqtt` - For MQTT client functionality (pip install aiomqtt)
-- `scapy` - For packet capture (pip install scapy)
 
 ### Quick Start
 
@@ -123,6 +124,79 @@ cd ..
 ```
 
 The application will be available at `http://localhost:8000`
+
+### Running as a Service (systemd)
+
+To run Z-Cockpit automatically on system startup:
+
+```bash
+# Copy the service file
+sudo cp z-cockpit.service /etc/systemd/system/
+
+# Reload systemd daemon
+sudo systemctl daemon-reload
+
+# Enable and start the service
+sudo systemctl enable --now z-cockpit.service
+
+# Check status
+sudo systemctl status z-cockpit.service
+```
+
+**Service file location**: `z-cockpit.service` (in project root)
+
+**Logs**: Check `/home/zissis/Projects/Personal/z-cockpit/start.log` or use `journalctl -u z-cockpit.service -f`
+
+**To stop/disable**:
+```bash
+sudo systemctl stop z-cockpit.service
+sudo systemctl disable z-cockpit.service
+```
+
+### Running with Docker
+
+The easiest way to run Z-Cockpit is via Docker. A multi-stage `Dockerfile` and `docker-compose.yml` are included.
+
+**Requirements:** Docker Engine + Docker Compose plugin.
+
+**Build and start:**
+
+```bash
+docker compose up --build
+```
+
+The app will be available at `http://localhost:8000`.
+
+**Subsequent starts (no rebuild needed):**
+
+```bash
+docker compose up
+```
+
+**Stop:**
+
+```bash
+docker compose down
+```
+
+#### Persistent data
+
+Two mounts keep your configuration across container rebuilds:
+
+| Path in container | What is stored |
+|---|---|
+| `/app/config` | `remotes.json`, `scripts.json` (bind-mounted from `./config/`) |
+| `/root/.config/z-cockpit` | Account settings (named Docker volume `z-cockpit-settings`) |
+
+#### Hardware access (serial ports & OpenOCD / ST-Link)
+
+The compose file runs the container with `privileged: true`, which exposes all host devices. If you prefer tighter control, replace that flag with explicit device entries in `docker-compose.yml`:
+
+```yaml
+    devices:
+      - /dev/ttyACM0:/dev/ttyACM0   # serial port
+      - /dev/bus/usb:/dev/bus/usb   # USB bus for ST-Link / OpenOCD
+```
 
 ### Development Mode
 
@@ -205,7 +279,7 @@ Control OpenOCD server and flash microcontrollers.
 
 ### 3. Serial Terminal
 
-Full-featured serial communication terminal with VT100 support.
+Full-featured serial communication terminal.
 
 **Connection Settings:**
 - Port selection (auto-refresh)
@@ -218,13 +292,11 @@ Full-featured serial communication terminal with VT100 support.
 - **ASCII Mode**: Standard terminal display
 - **Hex Mode**: Raw hex dump
 - **Both Mode**: Side-by-side hex and ASCII
-- **VT100 Mode**: 24×80 terminal with escape sequences
 
 **Features:**
-- Timestamped logging
+- Timestamped logging (per line)
 - Real-time auto-scroll
 - Save to file (server-side)
-- ANSI color support
 - Line ending options (\n, \r, \r\n, \n\r)
 - Data type selection (ASCII/Hex)
 - Log file management
@@ -344,14 +416,6 @@ Network diagnostic tools for embedded development.
 - Hostname resolution
 - MAC address detection
 
-**Packet Capturer:**
-- Select network interface
-- BPF filter support (e.g., "port 80", "tcp", "host 192.168.1.1")
-- Real-time packet capture
-- Protocol coloring (TCP/UDP/ICMP/ARP)
-- Virtual scrolling for large captures
-- Save capture to file
-
 ### 8. Settings Tab
 
 Application configuration.
@@ -403,6 +467,16 @@ JSON-based step-by-step scripting engine for automated workflows.
 - Device provisioning
 - Serial communication automation
 - Multi-step testing workflows
+
+## Running as Background Process (without systemd)
+
+To run Z-Cockpit in the background and keep it running after terminal exit:
+
+```bash
+./start-detached.sh
+```
+
+This script uses `nohup` to detach the process and logs output to `start.log`.
 
 ## Remote Agent
 
@@ -504,7 +578,6 @@ The backend exposes a REST API at `/api/` and WebSocket endpoints at `/ws/`.
 - `/ws/serial` - Serial data streaming
 - `/ws/mqtt` - MQTT messages and broker updates
 - `/ws/openocd` - OpenOCD logs and status
-- `/ws/tools/capture` - Packet capture stream
 - `/ws/scripts` - Script execution logs
 - `/ws/remotes/{id}/openocd` - Proxy to remote OpenOCD
 
@@ -549,7 +622,7 @@ python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
 
 ### Frontend
 
-- Node.js 18+
+- Node.js 24 LTS
 - React 18.2+
 - TypeScript 5.3+
 - Vite 5.0+
@@ -558,7 +631,7 @@ python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ### System Dependencies
 
 - OpenOCD (for flash operations)
-- Python packages: pyserial (for serial), scapy (for packet capture)
+- nmap (optional, for faster network scanning)
 
 ## Troubleshooting
 

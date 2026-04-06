@@ -191,5 +191,4 @@ export const remotes = {
 export const tools = {
   networkInterfaces: () => req<{ interfaces: Array<{ interface: string; ip: string; prefix: number; broadcast: string }>; client_ip: string }>('GET', '/tools/network/interfaces'),
   scanNetwork:       (subnet: string) => req<{ hosts: Array<{ ip: string; hostname: string; mac: string }>; count: number }>('POST', '/tools/network/scan', { subnet }),
-  captureInterfaces: () => req<{ interfaces: string[] }>('GET', '/tools/network/capture-interfaces'),
 }
