@@ -5,6 +5,7 @@ import FlashOps from './FlashOps'
 import MemoryViewer from './MemoryViewer'
 import ScriptConsole from './ScriptConsole'
 import ScriptRunner from './ScriptRunner'
+import ContentEditor from './ContentEditor'
 import LogViewer from './LogViewer'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { createOCDApi, remotes } from '../../api/client'
@@ -16,6 +17,7 @@ const RIGHT_TABS = [
   { id: 'memory',  label: 'Memory' },
   { id: 'scripts', label: 'Scripts' },
   { id: 'console', label: 'TCL Console' },
+  { id: 'editor',  label: 'Content Editor' },
 ] as const
 
 type RightTabId = typeof RIGHT_TABS[number]['id']
@@ -222,6 +224,9 @@ export default function OpenOCDTab() {
             </div>
             <div className={rightTab === 'console' ? 'flex flex-col h-full' : 'hidden'}>
               <ScriptConsole connected={status.connected} ocd={ocd} />
+            </div>
+            <div className={rightTab === 'editor' ? 'flex flex-col h-full' : 'hidden'}>
+              <ContentEditor connected={status.connected} onLog={addLog} ocd={ocd} />
             </div>
           </div>
 
