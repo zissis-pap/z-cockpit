@@ -35,6 +35,8 @@ export default function OpenOCDTab() {
   const [remoteList, setRemoteList] = useState<RemoteAgent[]>([])
   const [selectedRemoteId, setSelectedRemoteId] = useState<string | undefined>(undefined)
   const [agentReachable, setAgentReachable] = useState<boolean | null>(null)
+  const [serialLines, setSerialLines] = useState<Array<{ dir: 'tx' | 'rx'; text: string }>>([])
+  const serialEndRef = useRef<HTMLDivElement>(null)
   const wsStatusReceived = useRef(false)   // true once WS delivers first status for this target
   const prevConnected = useRef(false)
 
@@ -220,7 +222,13 @@ export default function OpenOCDTab() {
               />
             </div>
             <div className={rightTab === 'scripts' ? 'flex flex-col h-full' : 'hidden'}>
-              <ScriptRunner />
+              <ScriptRunner
+                onSerialLine={(dir, text) => {
+                  setSerialLines(prev => [...prev.slice(-500), { dir, text }])
+                  setTimeout(() => serialEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 30)
+                }}
+                onClearSerial={() => setSerialLines([])}
+              />
             </div>
             <div className={rightTab === 'console' ? 'flex flex-col h-full' : 'hidden'}>
               <ScriptConsole connected={status.connected} ocd={ocd} />
@@ -230,9 +238,32 @@ export default function OpenOCDTab() {
             </div>
           </div>
 
-          {/* Log — fills all remaining space below tab content */}
-          <div className="flex-1 min-h-32 mt-3 bg-[#0a0c10] overflow-hidden">
-            <LogViewer logs={logs} onClear={() => setLogs([])} />
+          {/* Log area — single panel normally, split side-by-side on Scripts tab */}
+          <div className={`flex-1 min-h-32 mt-3 overflow-hidden ${rightTab === 'scripts' ? 'flex gap-2' : ''}`}>
+            <div className={rightTab === 'scripts' ? 'flex-1 min-w-0 overflow-hidden' : 'h-full'}>
+              <LogViewer logs={logs} onClear={() => setLogs([])} />
+            </div>
+            {rightTab === 'scripts' && (
+              <div className="flex-1 min-w-0 overflow-hidden panel flex flex-col">
+                <div className="panel-header flex items-center justify-between shrink-0">
+                  <span>Serial Terminal</span>
+                  <button className="btn-ghost text-xs px-2 py-0.5 normal-case font-normal"
+                    onClick={() => setSerialLines([])}>Clear</button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-2 mono text-xs space-y-0.5">
+                  {serialLines.length === 0 && (
+                    <div className="text-zinc-600 italic">Serial TX/RX will appear here during script execution…</div>
+                  )}
+                  {serialLines.map((l, i) => (
+                    <div key={i} className={`flex gap-2 ${l.dir === 'tx' ? 'text-amber-400' : 'text-green-400'}`}>
+                      <span className="shrink-0 text-zinc-600">{l.dir === 'tx' ? '→ TX' : '← RX'}</span>
+                      <span className="break-all whitespace-pre-wrap">{l.text}</span>
+                    </div>
+                  ))}
+                  <div ref={serialEndRef} />
+                </div>
+              </div>
+            )}
           </div>
 
         </div>

@@ -16,12 +16,14 @@ A modern, web-based embedded development toolkit that brings essential embedded 
 - **Binary Editor** - Hex editor with virtual scrolling, undo/redo, compare mode
 - **Network Tools** - Interface info and network scanner
 - **Script Runner** - JSON-based step-by-step automation for flashing, serial, and OpenOCD operations
+- **Variable Editor** - Read, edit, and monitor flash memory variables with address-to-name mapping (in OpenOCD tab)
 
 ### 🌐 Remote Access
 
-- **Remote Agent** - Run Z-Cockpit on a remote machine (Raspberry Pi, flashing station) and control it from anywhere
-- **WebSocket Proxying** - Seamless proxying of OpenOCD and serial connections through remote agents
-- **Token Authentication** - Secure API token support for remote agents
+- **Remote Agent** - Standalone agent for remote flashing stations (Raspberry Pi, etc.)
+- **WebSocket Proxying** - Proxy OpenOCD and serial connections through remote agents
+- **Token Authentication** - API token support for remote agents
+- **Remote Script Execution** - Run automation scripts on remote agents
 
 ### 💻 User Experience
 
@@ -29,6 +31,8 @@ A modern, web-based embedded development toolkit that brings essential embedded 
 - **Responsive Layout** - Collapsible sidebar, resizable panels
 - **Real-time Updates** - WebSocket-based streaming for logs, serial data, packets
 - **Keyboard Shortcuts** - Full keyboard navigation in editor and terminal
+- **File Drag & Drop** - Drag binary files into the binary editor
+- **JSON Tree Viewer** - Collapsible JSON tree for MQTT payloads
 
 ## Project Structure
 
@@ -53,6 +57,7 @@ z-cockpit/
 │   │   ├── repos_manager.py
 │   │   ├── script_runner.py
 │   │   ├── remotes_manager.py
+│   │   ├── remote_client.py
 │   │   ├── github_manager.py
 │   │   ├── bitbucket_manager.py
 │   │   └── network_tools.py
@@ -62,6 +67,14 @@ z-cockpit/
 │   │   ├── components/   # React components
 │   │   │   ├── ProjectsTab/
 │   │   │   ├── OpenOCDTab/
+│   │   │   │   ├── ContentEditor.tsx   # Variable editor
+│   │   │   │   ├── MemoryViewer.tsx    # Memory viewer
+│   │   │   │   ├── FlashOps.tsx        # Flash operations
+│   │   │   │   ├── MCUSelector.tsx     # MCU configuration
+│   │   │   │   ├── ServerControl.tsx   # OpenOCD server
+│   │   │   │   ├── LogViewer.tsx       # Log display
+│   │   │   │   ├── ScriptRunner.tsx    # Script runner
+│   │   │   │   └── ScriptConsole.tsx   # Script console
 │   │   │   ├── SerialTab/
 │   │   │   ├── MQTTTab/
 │   │   │   ├── ToolsTab/
@@ -103,6 +116,7 @@ z-cockpit/
 
 **Optional dependencies:**
 - `aiomqtt` - For MQTT client functionality (pip install aiomqtt)
+- `httpx` - For remote agent support (pip install httpx)
 
 ### Quick Start
 
@@ -179,7 +193,13 @@ docker compose up
 docker compose down
 ```
 
-#### Persistent data
+**Stop:**
+
+```bash
+docker compose down
+```
+
+#### Persistent Data
 
 Two mounts keep your configuration across container rebuilds:
 
@@ -188,7 +208,9 @@ Two mounts keep your configuration across container rebuilds:
 | `/app/config` | `remotes.json`, `scripts.json` (bind-mounted from `./config/`) |
 | `/root/.config/z-cockpit` | Account settings (named Docker volume `z-cockpit-settings`) |
 
-#### Hardware access (serial ports & OpenOCD / ST-Link)
+#### Hardware Access (Serial Ports & OpenOCD / ST-Link)
+
+### Hardware Access (Serial Ports & OpenOCD / ST-Link)
 
 The compose file runs the container with `privileged: true`, which exposes all host devices. If you prefer tighter control, replace that flag with explicit device entries in `docker-compose.yml`:
 
@@ -238,9 +260,16 @@ Manage GitHub and Bitbucket repositories directly from the browser.
 - **Commit**: Stage and commit changes with message
 - **Browse**: View files, edit in binary editor
 
-### 2. OpenOCD Tab - Flash & Debug
+### 2. OpenOCD Tab - Flash, Debug & Variable Monitoring
 
-Control OpenOCD server and flash microcontrollers.
+Control OpenOCD server, flash microcontrollers, and monitor memory variables.
+
+**Variable Editor:**
+- Add variables with custom names and addresses
+- Read/write variable values from flash memory
+- Edit in hex, decimal, or ASCII format
+- Visual indicators for modified variables
+- Little-endian byte ordering support
 
 **Server Control:**
 - Start/Stop OpenOCD server
@@ -416,7 +445,28 @@ Network diagnostic tools for embedded development.
 - Hostname resolution
 - MAC address detection
 
-### 8. Settings Tab
+### 8. Variable Editor (in OpenOCD Tab) - Memory Variable Monitor
+
+Read and monitor flash memory variables with address-to-name mapping.
+
+**Features:**
+- Add multiple variables with custom names and addresses
+- Read variable values from flash memory
+- Edit variable values in multiple formats (hex, decimal, ASCII)
+- Visual indicators for modified variables (amber background)
+- Automatic little-endian byte ordering for multi-byte values
+- Real-time variable updates
+- Save variable configurations
+
+**Usage:**
+1. Open **OpenOCD → Variable Editor**
+2. Click **+ Add Variable** to create a new variable entry
+3. Enter the memory address (hex), variable name, and size (in bytes)
+4. Click **Read** to fetch current value from flash
+5. Edit the value and click **Write** to update flash memory
+6. Monitor variables in real-time during debugging
+
+### 9. Settings Tab
 
 Application configuration.
 
@@ -432,7 +482,7 @@ Application configuration.
 - Clone path configuration
 - Connection testing
 
-### 9. Script Runner Tab - Automation
+### 10. Script Runner Tab - Automation
 
 JSON-based step-by-step scripting engine for automated workflows.
 
@@ -478,20 +528,22 @@ To run Z-Cockpit in the background and keep it running after terminal exit:
 
 This script uses `nohup` to detach the process and logs output to `start.log`.
 
+This script uses `nohup` to detach the process and logs output to `start.log`.
+
 ## Remote Agent
 
-Z-Cockpit includes a standalone remote agent that can be deployed on Raspberry Pi or other Linux machines.
+Z-Cockpit includes a standalone remote agent that can be deployed on Raspberry Pi, Linux, Windows, or macOS machines.
 
 ### Running the Agent
 
 ```bash
-# Basic usage
+# Basic usage (no authentication)
 python remote_agent.py
 
 # With custom port
 python remote_agent.py --port 8888
 
-# With authentication
+# With authentication token (recommended for security)
 python remote_agent.py --port 7777 --token mysecrettoken
 
 # Bind to specific interface
@@ -568,6 +620,10 @@ The backend exposes a REST API at `/api/` and WebSocket endpoints at `/ws/`.
 - `POST /api/openocd/flash/halt` - Halt CPU
 - `POST /api/openocd/flash/program` - Flash firmware
 - `POST /api/openocd/memory/read` - Read memory
+- `POST /api/openocd/memory/write` - Write memory word
+- `POST /api/openocd/flash/erase` - Erase flash at address
+- `POST /api/openocd/flash/verify` - Verify flash contents
+- `POST /api/openocd/flash/reset` - Reset target
 - `GET /api/tools/network/interfaces` - Network info
 - `POST /api/tools/network/scan` - Scan subnet
 - `POST /api/remotes` - Manage remote agents
@@ -580,13 +636,14 @@ The backend exposes a REST API at `/api/` and WebSocket endpoints at `/ws/`.
 - `/ws/openocd` - OpenOCD logs and status
 - `/ws/scripts` - Script execution logs
 - `/ws/remotes/{id}/openocd` - Proxy to remote OpenOCD
+- `/ws/remotes/{id}/serial` - Proxy to remote serial
 
 ## Configuration
 
 ### Config Files
 
 - `config/remotes.json` - Remote agent configuration
-- `config/scripts.json` - Predefined scripts
+- `config/scripts.json` - Predefined automation scripts
 
 ### Settings Storage
 
@@ -618,7 +675,7 @@ python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
 - python-multipart >= 0.0.6
 - aiofiles >= 23.2.1
 - websockets >= 12.0
-- httpx >= 0.27.0
+- httpx >= 0.27.0 (for remote agent support)
 
 ### Frontend
 
@@ -635,7 +692,7 @@ python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
 
 ## Troubleshooting
 
-### OpenOCD Issues
+### OpenOCD & Variable Editor Issues
 
 **"openocd not found"**
 - Ensure OpenOCD is installed and in PATH

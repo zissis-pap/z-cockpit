@@ -241,7 +241,12 @@ function StepRow({ index, step, state }: {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function ScriptRunner() {
+interface ScriptRunnerProps {
+  onSerialLine?: (dir: 'tx' | 'rx', text: string) => void
+  onClearSerial?: () => void
+}
+
+export default function ScriptRunner({ onSerialLine, onClearSerial }: ScriptRunnerProps = {}) {
   const [scriptList, setScriptList]   = useState<ScriptMeta[]>([])
   const [selectedId, setSelectedId]   = useState<number | null>(null)
   const [script, setScript]           = useState<Script | null>(null)
@@ -288,6 +293,7 @@ export default function ScriptRunner() {
       const count = Number(msg.step_count ?? 0)
       setStepStates(Array.from({ length: count }, () => ({ status: 'pending' })))
       setLogLines([])
+      onClearSerial?.()
       setRunning(true)
       setRunTarget(String(msg.target ?? 'local'))
       setView('steps')
@@ -322,7 +328,15 @@ export default function ScriptRunner() {
       setLogLines(prev => [...prev.slice(-200), String(msg.message ?? '')])
       return
     }
-  }, [])
+    if (msg.type === 'serial_tx') {
+      onSerialLine?.('tx', String(msg.data ?? ''))
+      return
+    }
+    if (msg.type === 'serial_rx') {
+      onSerialLine?.('rx', String(msg.data ?? ''))
+      return
+    }
+  }, [onSerialLine, onClearSerial])
 
   useWebSocket('/ws/scripts', handleWs)
 

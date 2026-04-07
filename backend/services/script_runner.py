@@ -333,6 +333,7 @@ class ScriptRunner:
         if t == "uart_send":
             data_str = step.get("data", "")
             data_str = data_str.replace("\\n", "\n").replace("\\r", "\r")
+            await self.broadcast({"type": "serial_tx", "data": data_str})
             if remote:
                 result = await remote.send_serial(data_str, "ascii", "none")
             else:
@@ -395,6 +396,7 @@ class ScriptRunner:
                 try:
                     chunk = await asyncio.wait_for(queue.get(), timeout=min(0.1, remaining))
                     buf += chunk
+                    await self.broadcast({"type": "serial_rx", "data": chunk})
                     if re.search(pattern, buf):
                         return buf
                 except asyncio.TimeoutError:

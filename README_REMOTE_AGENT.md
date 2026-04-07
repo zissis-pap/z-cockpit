@@ -146,8 +146,18 @@ All endpoints (except `GET /`) require the `X-Token` header when a token is conf
 | `POST` | `/api/openocd/command` | `{cmd}` | Send a raw TCL command |
 | `POST` | `/api/openocd/flash/halt` | — | Halt the target CPU |
 | `POST` | `/api/openocd/flash/erase_chip` | — | Full chip erase |
+| `POST` | `/api/openocd/flash/erase` | `{address, size}` | Erase specific flash region |
 | `POST` | `/api/openocd/firmware/upload` | multipart `file` | Upload a `.bin` file to the agent's temp dir |
-| `POST` | `/api/openocd/flash/program` | `{filename, address, verify, do_reset}` | Flash a previously uploaded file |
+| `POST` | `/api/openocd/flash/program` | `{filename, address, verify}` | Flash a previously uploaded file |
+| `POST` | `/api/openocd/flash/read` | `{address, size, output_filename}` | Read flash to file |
+| `POST` | `/api/openocd/flash/verify` | `{filename, address}` | Verify flash contents |
+| `POST` | `/api/openocd/flash/reset` | — | Reset target |
+| `GET` | `/api/openocd/flash/download/{filename}` | — | Download flash dump file |
+| `GET` | `/api/openocd/flash/info` | — | Get flash info |
+| `GET` | `/api/openocd/flash/page_size` | — | Get flash page size |
+| `POST` | `/api/openocd/flash/patch_bytes` | `{address, data}` | Patch bytes in flash page |
+| `POST` | `/api/openocd/memory/read` | `{address, size}` | Read memory |
+| `POST` | `/api/openocd/memory/write` | `{address, value}` | Write memory word |
 | `WS` | `/ws/openocd` | — | Real-time OpenOCD log stream |
 
 Uploaded firmware is stored in the system temp directory (`/tmp/z-cockpit-agent/` on Linux) and persists until the OS clears it or the agent is restarted.
