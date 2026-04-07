@@ -211,29 +211,37 @@ class ReposManager:
             cwd=repo_path, repo_key=repo_key,
         )
 
-        # Push with credentials — use remote name so tracking refs are updated
+        # Guard: token required for push
+        token = account.get('token', '').strip()
+        if not token:
+            await self._log(repo_key, 'No access token configured for this account — add one in Settings', 'error')
+            await self.broadcast({'type': 'op_done', 'op': 'commit', 'repo': repo_key, 'ok': False})
+            return
+
+        # Build authenticated push URL from the stored remote
         rc, remote_url, _ = await self._run(['git', 'remote', 'get-url', 'origin'], cwd=repo_path)
         if rc != 0:
             await self._log(repo_key, 'Could not determine remote URL', 'error')
             await self.broadcast({'type': 'op_done', 'op': 'commit', 'repo': repo_key, 'ok': False})
             return
 
-        # Strip any existing embedded credentials before re-injecting
         clean_url = re.sub(r'https://[^@]+@', 'https://', remote_url.strip())
         if platform == 'bitbucket':
-            auth_url = bitbucket_manager.make_auth_clone_url(clean_url, account['username'], account['token'])
+            auth_url = bitbucket_manager.make_auth_clone_url(clean_url, account['username'], token)
         else:
-            auth_url = github_manager.make_auth_clone_url(clean_url, account['token'])
+            auth_url = github_manager.make_auth_clone_url(clean_url, token)
 
-        # Push with credentials embedded in the URL; disable credential helpers and terminal prompting
-        # so git never tries to open an interactive prompt (no TTY in a subprocess).
+        await self._log(repo_key, f'Pushing to {clean_url}')
+
+        # Use -c remote.origin.url to inject credentials for this invocation only —
+        # never writes to .git/config.  GIT_TERMINAL_PROMPT=0 + credential.helper= prevent
+        # any interactive credential prompt (no TTY in a subprocess).
         no_prompt_env = {**os.environ, 'GIT_TERMINAL_PROMPT': '0', 'GIT_ASKPASS': 'echo'}
-        await self._run(['git', 'remote', 'set-url', 'origin', auth_url], cwd=repo_path)
         ok = await self._stream_proc(
-            ['git', '-c', 'credential.helper=', 'push', '--set-upstream', 'origin', 'HEAD'],
+            ['git', '-c', 'credential.helper=', '-c', f'remote.origin.url={auth_url}',
+             'push', '--set-upstream', 'origin', 'HEAD'],
             cwd=repo_path, repo_key=repo_key, env=no_prompt_env,
         )
-        await self._run(['git', 'remote', 'set-url', 'origin', clean_url], cwd=repo_path)
         await self.broadcast({'type': 'op_done', 'op': 'commit', 'repo': repo_key, 'ok': ok})
 
 
