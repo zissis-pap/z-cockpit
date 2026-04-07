@@ -72,8 +72,7 @@ def normalize_repo(repo: dict, account: dict) -> dict:
     }
 
 
-def make_auth_clone_url(clone_url: str, token: str, username: str = '') -> str:
+def make_auth_clone_url(clone_url: str, token: str) -> str:
     if token and "github.com" in clone_url:
-        user = username or 'git'
-        return clone_url.replace("https://", f"https://{user}:{token}@")
+        return clone_url.replace("https://", f"https://{token}@")
     return clone_url
