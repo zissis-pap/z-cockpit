@@ -1,5 +1,6 @@
 """Orchestrates multi-account git operations and WebSocket broadcasts."""
 import asyncio
+import os
 import subprocess
 from pathlib import Path
 
@@ -54,7 +55,8 @@ class ReposManager:
         stdout, stderr = await proc.communicate()
         return proc.returncode, stdout.decode(errors='replace'), stderr.decode(errors='replace')
 
-    async def _stream_proc(self, args: list[str], cwd: Path, repo_key: str) -> bool:
+    async def _stream_proc(self, args: list[str], cwd: Path, repo_key: str,
+                           env: dict | None = None) -> bool:
         """Run a subprocess, stream output as log messages, return success."""
         if not cwd.exists():
             await self._log(repo_key, f"Directory not found: {cwd} — clone the repo first", 'error')
@@ -65,6 +67,7 @@ class ReposManager:
                 cwd=str(cwd),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
+                env=env,
             )
             async for raw_line in proc.stdout:
                 text = raw_line.decode(errors='replace').rstrip()
@@ -222,9 +225,14 @@ class ReposManager:
         else:
             auth_url = github_manager.make_auth_clone_url(clean_url, account['token'])
 
-        # Temporarily set remote to auth URL, push via remote name (updates tracking refs), restore clean URL
+        # Push with credentials embedded in the URL; disable credential helpers and terminal prompting
+        # so git never tries to open an interactive prompt (no TTY in a subprocess).
+        no_prompt_env = {**os.environ, 'GIT_TERMINAL_PROMPT': '0', 'GIT_ASKPASS': 'echo'}
         await self._run(['git', 'remote', 'set-url', 'origin', auth_url], cwd=repo_path)
-        ok = await self._stream_proc(['git', 'push', '--set-upstream', 'origin', 'HEAD'], cwd=repo_path, repo_key=repo_key)
+        ok = await self._stream_proc(
+            ['git', '-c', 'credential.helper=', 'push', '--set-upstream', 'origin', 'HEAD'],
+            cwd=repo_path, repo_key=repo_key, env=no_prompt_env,
+        )
         await self._run(['git', 'remote', 'set-url', 'origin', clean_url], cwd=repo_path)
         await self.broadcast({'type': 'op_done', 'op': 'commit', 'repo': repo_key, 'ok': ok})
 
