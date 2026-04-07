@@ -114,6 +114,12 @@ async def commit_repo(account_id: str, repo_name: str, payload: CommitPayload):
     return {"ok": True, "message": "Commit started"}
 
 
+@router.post("/repos/{account_id}/{repo_name}/push")
+async def push_repo(account_id: str, repo_name: str):
+    asyncio.create_task(repos_manager.push_only(account_id, repo_name))
+    return {"ok": True, "message": "Push started"}
+
+
 # ── Local delete ──────────────────────────────────────────────────────────────
 
 @router.delete("/repos/{account_id}/{repo_name}/local")

@@ -183,8 +183,39 @@ class ReposManager:
         ok = await self._stream_proc(['git', 'fetch'], cwd=repo_path, repo_key=repo_key)
         await self.broadcast({'type': 'op_done', 'op': 'fetch', 'repo': repo_key, 'ok': ok})
 
-    async def commit_and_push(self, account_id: str, repo_name: str, message: str):
+    async def _push(self, account: dict, repo_path: Path, repo_key: str, op: str) -> bool:
+        """Shared push logic. Returns True on success."""
         import re
+        token = account.get('token', '').strip()
+        username = account.get('username', '').strip()
+        if not token:
+            await self._log(repo_key, 'No access token configured for this account — add one in Settings', 'error')
+            return False
+
+        rc, remote_url, _ = await self._run(['git', 'remote', 'get-url', 'origin'], cwd=repo_path)
+        if rc != 0:
+            await self._log(repo_key, 'Could not determine remote URL', 'error')
+            return False
+
+        clean_url = re.sub(r'https://[^@]+@', 'https://', remote_url.strip())
+        platform = account.get('platform', 'github')
+        if platform == 'bitbucket':
+            auth_url = bitbucket_manager.make_auth_clone_url(clean_url, username, token)
+        else:
+            auth_url = github_manager.make_auth_clone_url(clean_url, token, username)
+
+        await self._log(repo_key, f'Pushing to {clean_url}')
+
+        # Inject credentials via -c so they never touch .git/config.
+        # GIT_TERMINAL_PROMPT=0 / GIT_ASKPASS=echo prevent any interactive prompt.
+        no_prompt_env = {**os.environ, 'GIT_TERMINAL_PROMPT': '0', 'GIT_ASKPASS': 'echo'}
+        return await self._stream_proc(
+            ['git', '-c', 'credential.helper=', '-c', f'remote.origin.url={auth_url}',
+             'push', '--set-upstream', 'origin', 'HEAD'],
+            cwd=repo_path, repo_key=repo_key, env=no_prompt_env,
+        )
+
+    async def commit_and_push(self, account_id: str, repo_name: str, message: str):
         try:
             account, repo_path, repo_key = self._resolve(account_id, repo_name)
         except ValueError:
@@ -211,38 +242,17 @@ class ReposManager:
             cwd=repo_path, repo_key=repo_key,
         )
 
-        # Guard: token required for push
-        token = account.get('token', '').strip()
-        if not token:
-            await self._log(repo_key, 'No access token configured for this account — add one in Settings', 'error')
-            await self.broadcast({'type': 'op_done', 'op': 'commit', 'repo': repo_key, 'ok': False})
-            return
-
-        # Build authenticated push URL from the stored remote
-        rc, remote_url, _ = await self._run(['git', 'remote', 'get-url', 'origin'], cwd=repo_path)
-        if rc != 0:
-            await self._log(repo_key, 'Could not determine remote URL', 'error')
-            await self.broadcast({'type': 'op_done', 'op': 'commit', 'repo': repo_key, 'ok': False})
-            return
-
-        clean_url = re.sub(r'https://[^@]+@', 'https://', remote_url.strip())
-        if platform == 'bitbucket':
-            auth_url = bitbucket_manager.make_auth_clone_url(clean_url, account['username'], token)
-        else:
-            auth_url = github_manager.make_auth_clone_url(clean_url, token)
-
-        await self._log(repo_key, f'Pushing to {clean_url}')
-
-        # Use -c remote.origin.url to inject credentials for this invocation only —
-        # never writes to .git/config.  GIT_TERMINAL_PROMPT=0 + credential.helper= prevent
-        # any interactive credential prompt (no TTY in a subprocess).
-        no_prompt_env = {**os.environ, 'GIT_TERMINAL_PROMPT': '0', 'GIT_ASKPASS': 'echo'}
-        ok = await self._stream_proc(
-            ['git', '-c', 'credential.helper=', '-c', f'remote.origin.url={auth_url}',
-             'push', '--set-upstream', 'origin', 'HEAD'],
-            cwd=repo_path, repo_key=repo_key, env=no_prompt_env,
-        )
+        ok = await self._push(account, repo_path, repo_key, 'commit')
         await self.broadcast({'type': 'op_done', 'op': 'commit', 'repo': repo_key, 'ok': ok})
+
+    async def push_only(self, account_id: str, repo_name: str):
+        try:
+            account, repo_path, repo_key = self._resolve(account_id, repo_name)
+        except ValueError:
+            return
+        await self.broadcast({'type': 'op_start', 'op': 'push', 'repo': repo_key})
+        ok = await self._push(account, repo_path, repo_key, 'push')
+        await self.broadcast({'type': 'op_done', 'op': 'push', 'repo': repo_key, 'ok': ok})
 
 
 repos_manager = ReposManager()

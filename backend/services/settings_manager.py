@@ -72,7 +72,9 @@ class SettingsManager:
     # ── Internal helpers ──────────────────────────────────────────────────────
 
     def _mask_account(self, acct: dict) -> dict:
-        a = dict(acct)
+        # Merge with defaults so new fields (e.g. email) are always present
+        # even for accounts saved before the field was added.
+        a = {**ACCOUNT_DEFAULTS, **dict(acct)}
         a["token"] = _mask(a.get("token", ""))
         return a
 

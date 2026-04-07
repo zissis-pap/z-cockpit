@@ -405,6 +405,10 @@ export default function ProjectView({ repo, onBack }: Props) {
             Commit
           </button>
 
+          <button className="btn-ghost text-xs py-1 px-2.5" onClick={() => projectsApi.push(repo.account_id, repo.name)}>
+            Push
+          </button>
+
           {confirmDelete ? (
             <>
               <span className="text-xs text-red-400">Delete local copy?</span>
