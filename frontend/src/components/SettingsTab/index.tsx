@@ -16,6 +16,7 @@ interface FormState {
   platform: Platform
   label: string
   username: string
+  email: string
   token: string
   workspace: string
   clone_base_path: string
@@ -25,6 +26,7 @@ const EMPTY_FORM: FormState = {
   platform: 'github',
   label: '',
   username: '',
+  email: '',
   token: '',
   workspace: '',
   clone_base_path: '',
@@ -108,6 +110,21 @@ function AccountForm({
           onChange={e => field('username', e.target.value)}
           autoComplete="off"
         />
+      </div>
+
+      {/* Email */}
+      <div>
+        <label className="text-xs text-zinc-400 block mb-1">Email</label>
+        <input
+          className="input w-full"
+          placeholder="you@example.com"
+          value={form.email}
+          onChange={e => field('email', e.target.value)}
+          autoComplete="email"
+        />
+        <p className="text-xs text-zinc-600 mt-1">
+          Used as git author email when committing. Leave blank to use a noreply address.
+        </p>
       </div>
 
       {/* Token */}
@@ -484,6 +501,7 @@ export default function SettingsTab() {
                     </div>
                     <div className="text-xs text-zinc-500">
                       @{acct.username}
+                      {acct.email && <span className="ml-2">{acct.email}</span>}
                       {acct.workspace && acct.workspace !== acct.username && ` · workspace: ${acct.workspace}`}
                       <span className="text-zinc-700 ml-2 mono">{acct.clone_base_path}</span>
                     </div>
@@ -525,6 +543,7 @@ export default function SettingsTab() {
                       platform: acct.platform,
                       label: acct.label,
                       username: acct.username,
+                      email: acct.email ?? '',
                       token: acct.token,
                       workspace: acct.workspace,
                       clone_base_path: acct.clone_base_path,

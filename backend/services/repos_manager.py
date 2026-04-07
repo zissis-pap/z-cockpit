@@ -197,8 +197,12 @@ class ReposManager:
         # Commit — inject identity via -c so no global git config is required in the container
         username = account.get('username', 'z-cockpit')
         platform = account.get('platform', 'github')
-        noreply = 'bitbucket.org' if platform == 'bitbucket' else 'github.com'
-        email = f"{username}@users.noreply.{noreply}"
+        stored_email = account.get('email', '').strip()
+        if stored_email:
+            email = stored_email
+        else:
+            noreply = 'bitbucket.org' if platform == 'bitbucket' else 'github.com'
+            email = f"{username}@users.noreply.{noreply}"
         await self._stream_proc(
             ['git', '-c', f'user.name={username}', '-c', f'user.email={email}', 'commit', '-m', message],
             cwd=repo_path, repo_key=repo_key,

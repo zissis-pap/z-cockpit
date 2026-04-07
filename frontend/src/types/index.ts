@@ -60,6 +60,7 @@ export interface Account {
   platform: Platform
   label: string
   username: string
+  email: string        // used as git author/committer email
   token: string        // masked on server side
   workspace: string    // bitbucket workspace slug
   clone_base_path: string

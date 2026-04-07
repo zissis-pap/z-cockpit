@@ -13,6 +13,7 @@ ACCOUNT_DEFAULTS = {
     "platform": "github",   # github | bitbucket
     "label": "",
     "username": "",
+    "email": "",            # git author/committer email (falls back to noreply if blank)
     "token": "",            # GitHub PAT or Bitbucket app password
     "workspace": "",        # Bitbucket workspace (defaults to username if blank)
     "clone_base_path": str(Path.home() / "Projects"),
