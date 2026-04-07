@@ -7,6 +7,7 @@ import ScriptConsole from './ScriptConsole'
 import ScriptRunner from './ScriptRunner'
 import ContentEditor from './ContentEditor'
 import LogViewer from './LogViewer'
+import PowerController from './PowerController'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { createOCDApi, remotes } from '../../api/client'
 import type { RemoteAgent } from '../../api/client'
@@ -179,6 +180,7 @@ export default function OpenOCDTab() {
           selectedConfig={targetConfig}
           onSelect={handleMcuSelect}
         />
+        <PowerController />
       </div>
 
       {/* Right panel — tabs + log stacked */}

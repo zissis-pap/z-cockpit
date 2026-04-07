@@ -8,6 +8,16 @@ from pathlib import Path
 CONFIG_PATH = Path.home() / ".config" / "z-cockpit" / "settings.json"
 _MASK = "•"
 
+POWER_CONTROLLER_DEFAULTS = {
+    "host": "",
+    "port": 1883,
+    "username": "",
+    "password": "",
+    "topic": "",
+    "num_switches": 2,
+    "switch_names": [],   # list of strings, one per switch (may be shorter than num_switches)
+}
+
 ACCOUNT_DEFAULTS = {
     "id": "",
     "platform": "github",   # github | bitbucket
@@ -35,6 +45,7 @@ def _is_masked(value: str) -> bool:
 class SettingsManager:
     def __init__(self):
         self._accounts: list[dict] = []
+        self._power_controller: dict = dict(POWER_CONTROLLER_DEFAULTS)
         self._load()
 
     # ── I/O ───────────────────────────────────────────────────────────────────
@@ -45,6 +56,8 @@ class SettingsManager:
         try:
             data = json.loads(CONFIG_PATH.read_text())
             # Migrate legacy flat format → accounts list
+            if "power_controller" in data:
+                self._power_controller = {**POWER_CONTROLLER_DEFAULTS, **data["power_controller"]}
             if "accounts" in data:
                 self._accounts = data["accounts"]
             elif "github_username" in data:
@@ -63,7 +76,10 @@ class SettingsManager:
 
     def _save(self):
         CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        CONFIG_PATH.write_text(json.dumps({"accounts": self._accounts}, indent=2))
+        CONFIG_PATH.write_text(json.dumps({
+            "accounts": self._accounts,
+            "power_controller": self._power_controller,
+        }, indent=2))
         try:
             CONFIG_PATH.chmod(0o600)
         except Exception:
@@ -127,6 +143,16 @@ class SettingsManager:
             self._save()
             return True
         return False
+
+    def get_power_controller(self) -> dict:
+        return dict(self._power_controller)
+
+    def set_power_controller(self, data: dict) -> dict:
+        for k, v in data.items():
+            if k in POWER_CONTROLLER_DEFAULTS:
+                self._power_controller[k] = v
+        self._save()
+        return dict(self._power_controller)
 
 
 settings_manager = SettingsManager()

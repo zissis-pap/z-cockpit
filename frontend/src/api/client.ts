@@ -200,6 +200,26 @@ export const remotes = {
   test:   (id: string)                                          => req<{ ok: boolean; info?: object; error?: string }>('POST', `/remotes/${id}/test`),
 }
 
+// ── Power Controller ──────────────────────────────────────────────────────────
+
+export interface PowerConfig {
+  host:         string
+  port:         number
+  username:     string
+  password:     string
+  topic:        string
+  num_switches: number
+  switch_names: string[]
+}
+
+export const power = {
+  getConfig:  () => req<{ ok: boolean; config: PowerConfig }>('GET', '/power/config'),
+  saveConfig: (cfg: PowerConfig) => req<{ ok: boolean; config: PowerConfig }>('PUT', '/power/config', cfg),
+  test:       () => req<{ ok: boolean; error?: string }>('POST', '/power/test'),
+  publish:    (switchNum: number, status: 'ON' | 'OFF') =>
+    req<{ ok: boolean; error?: string }>('POST', '/power/publish', { switch: switchNum, status }),
+}
+
 // ── Tools ─────────────────────────────────────────────────────────────────────
 
 export const tools = {

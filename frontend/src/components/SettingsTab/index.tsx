@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { Account, Platform } from '../../types'
-import { settings as settingsApi, remotes as remotesApi, type RemoteAgent } from '../../api/client'
+import { settings as settingsApi, remotes as remotesApi, power as powerApi, type RemoteAgent, type PowerConfig } from '../../api/client'
 
 const PLATFORM_LABEL: Record<Platform, string> = {
   github: 'GitHub',
@@ -385,6 +385,133 @@ function RemoteFormFields({ form, setField }: {
   )
 }
 
+// ── Power Controller section ───────────────────────────────────────────────────
+
+const EMPTY_POWER: PowerConfig = { host: '', port: 1883, username: '', password: '', topic: '', num_switches: 2, switch_names: [] }
+
+function PowerControllerSection() {
+  const [form, setForm]     = useState<PowerConfig>(EMPTY_POWER)
+  const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null)
+  const [err, setErr]       = useState('')
+
+  useEffect(() => {
+    powerApi.getConfig().then(r => { if (r.ok) setForm(r.config) }).catch(() => {})
+  }, [])
+
+  function field<K extends keyof PowerConfig>(k: K, v: PowerConfig[K]) {
+    setForm(f => ({ ...f, [k]: v }))
+    setTestResult(null); setErr('')
+  }
+
+  async function save() {
+    setSaving(true); setErr(''); setTestResult(null)
+    try {
+      const r = await powerApi.saveConfig(form)
+      if (!r.ok) { setErr('Save failed'); return }
+      setForm(r.config)
+      // Auto-test after saving
+      setTesting(true)
+      try {
+        const t = await powerApi.test()
+        setTestResult({ ok: t.ok, text: t.ok ? 'Connected successfully' : (t.error ?? 'Connection failed') })
+      } catch (e) {
+        setTestResult({ ok: false, text: String(e) })
+      } finally {
+        setTesting(false)
+      }
+    } catch (e) { setErr(String(e)) }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-base font-semibold text-zinc-200">Power Controller</h2>
+        <p className="text-xs text-zinc-500 mt-0.5">MQTT broker used to control power switches in the OpenOCD tab.</p>
+      </div>
+      <div className="panel p-4 space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-zinc-400 block mb-1">Broker Host</label>
+            <input className="input w-full mono" placeholder="192.168.1.100"
+              value={form.host} onChange={e => field('host', e.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs text-zinc-400 block mb-1">Port</label>
+            <input className="input w-full mono" placeholder="1883" type="number"
+              value={form.port} onChange={e => field('port', parseInt(e.target.value) || 1883)} />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-zinc-400 block mb-1">Username (optional)</label>
+            <input className="input w-full" placeholder="Leave blank if not required"
+              value={form.username} onChange={e => field('username', e.target.value)} autoComplete="off" />
+          </div>
+          <div>
+            <label className="text-xs text-zinc-400 block mb-1">Password (optional)</label>
+            <input className="input w-full" type="password" placeholder="Leave blank if not required"
+              value={form.password} onChange={e => field('password', e.target.value)} autoComplete="new-password" />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-zinc-400 block mb-1">Topic</label>
+            <input className="input w-full mono" placeholder="home/power/switches"
+              value={form.topic} onChange={e => field('topic', e.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs text-zinc-400 block mb-1">Number of Switches</label>
+            <input className="input w-full mono" type="number" min="1" max="16"
+              value={form.num_switches} onChange={e => {
+                const n = parseInt(e.target.value) || 1
+                const names = Array.from({ length: n }, (_, i) => form.switch_names[i] ?? '')
+                setForm(f => ({ ...f, num_switches: n, switch_names: names }))
+                setTestResult(null); setErr('')
+              }} />
+          </div>
+        </div>
+
+        {/* Switch names */}
+        <div>
+          <label className="text-xs text-zinc-400 block mb-2">Switch Names (optional)</label>
+          <div className="grid grid-cols-2 gap-2">
+            {Array.from({ length: form.num_switches }, (_, i) => (
+              <div key={i} className="flex items-center gap-1.5">
+                <span className="text-xs text-zinc-500 w-6 shrink-0">{i + 1}</span>
+                <input
+                  className="input flex-1 text-xs"
+                  placeholder={`Switch ${i + 1}`}
+                  value={form.switch_names[i] ?? ''}
+                  onChange={e => {
+                    const names = Array.from({ length: form.num_switches }, (_, j) => form.switch_names[j] ?? '')
+                    names[i] = e.target.value
+                    field('switch_names', names)
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {err && <p className="text-xs text-red-400">✗ {err}</p>}
+        {testResult && (
+          <p className={`text-xs ${testResult.ok ? 'text-green-400' : 'text-red-400'}`}>
+            {testResult.ok ? '✓' : '✗'} {testResult.text}
+          </p>
+        )}
+        <div className="flex items-center gap-3">
+          <button className="btn-primary text-xs px-4" onClick={save} disabled={saving || testing}>
+            {saving ? 'Saving…' : testing ? 'Testing…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Main settings tab ──────────────────────────────────────────────────────────
 
 export default function SettingsTab() {
@@ -449,6 +576,10 @@ export default function SettingsTab() {
       <div className="max-w-2xl mx-auto w-full space-y-10">
 
         <RemoteAgentsSection />
+
+        <hr className="border-[#21262d]" />
+
+        <PowerControllerSection />
 
         <hr className="border-[#21262d]" />
 
