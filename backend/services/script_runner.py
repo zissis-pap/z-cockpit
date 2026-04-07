@@ -15,6 +15,13 @@ from backend.services.openocd_manager import openocd_manager
 from backend.services.serial_manager import serial_manager
 from backend.services.remotes_manager import remotes_manager
 from backend.services.remote_client import RemoteClient
+from backend.services.settings_manager import settings_manager
+
+try:
+    import aiomqtt as _aiomqtt
+    _AIOMQTT_AVAILABLE = True
+except ImportError:
+    _AIOMQTT_AVAILABLE = False
 
 SCRIPTS_FILE = Path(__file__).parent.parent.parent / "config" / "scripts.json"
 
@@ -374,6 +381,29 @@ class ScriptRunner:
             except asyncio.TimeoutError:
                 proc.kill()
                 raise RuntimeError(f"exec timed out after {timeout}s")
+
+        # ── power_switch ──────────────────────────────────────────────────────
+        if t == "power_switch":
+            if not _AIOMQTT_AVAILABLE:
+                raise RuntimeError("aiomqtt not installed — cannot use power_switch step")
+            switch_num = int(step.get("switch", 1))
+            status = str(step.get("status", "ON")).upper()
+            cfg = settings_manager.get_power_controller()
+            if not cfg.get("host"):
+                raise RuntimeError("Power controller host not configured")
+            if not cfg.get("topic"):
+                raise RuntimeError("Power controller topic not configured")
+            payload = json.dumps({"switch": str(switch_num), "status": status})
+            kwargs: dict = {"hostname": cfg["host"], "port": int(cfg["port"])}
+            username = cfg.get("username", "").strip()
+            password = cfg.get("password", "").strip()
+            if username:
+                kwargs["username"] = username
+            if password:
+                kwargs["password"] = password
+            async with _aiomqtt.Client(**kwargs) as client:
+                await client.publish(cfg["topic"], payload.encode())
+            return f"switch {switch_num} → {status}"
 
         raise RuntimeError(f"Unknown step type: '{t}'")
 

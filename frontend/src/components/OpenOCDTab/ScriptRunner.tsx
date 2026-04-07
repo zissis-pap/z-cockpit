@@ -107,6 +107,18 @@ const CHEATSHEET = [
     desc: 'Run a shell command on the local machine. stdout is returned as the step result.',
     example: '{ "type": "exec", "command": "openssl rand -hex 16", "save_as": "enc_key" }\n{ "type": "exec", "command": "python3 /home/pi/provision.py --device 0" }',
   },
+  {
+    type: '— Power Controller —',
+    fields: '',
+    desc: 'Send MQTT switch commands via the Power Controller configured in Settings. Uses a one-shot connection per step.',
+    example: '',
+  },
+  {
+    type: 'power_switch',
+    fields: 'switch, status',
+    desc: 'Publish an MQTT command to the configured power controller broker. switch is the 1-based switch number. status is "ON" or "OFF". Supports {varname} interpolation.',
+    example: '{ "type": "power_switch", "switch": 1, "status": "ON" }\n{ "type": "power_switch", "switch": 2, "status": "OFF" }\n\n// With variable interpolation\n{ "type": "set_var", "name": "target_switch", "value": "1" }\n{ "type": "power_switch", "switch": "{target_switch}", "status": "ON" }',
+  },
 ]
 
 function Cheatsheet({ onClose }: { onClose: () => void }) {
@@ -173,6 +185,7 @@ const STEP_TYPE_COLORS: Record<string, string> = {
   log:           'text-zinc-400',
   set_var:       'text-emerald-400',
   exec:          'text-red-300',
+  power_switch:  'text-yellow-400',
 }
 
 const DEFAULT_SRC = JSON.stringify([
@@ -215,6 +228,7 @@ function StepRow({ index, step, state }: {
     if (t === 'log')           return String(step.message ?? '')
     if (t === 'set_var')       return `${step.name} = ${step.value}`
     if (t === 'exec')          return String(step.command ?? '')
+    if (t === 'power_switch')  return `switch ${step.switch} → ${step.status}`
     return ''
   })()
 
