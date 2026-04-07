@@ -78,7 +78,7 @@ export default function ProjectsTab() {
     if (!atBottom && logAutoScroll) setLogAutoScroll(false)
   }
 
-  async function loadRepos() {
+  async function loadRepos(autoFetch = false) {
     setLoading(true)
     setNotConfigured(false)
     try {
@@ -89,6 +89,11 @@ export default function ProjectsTab() {
       } else if (res.ok) {
         setRepos(res.repos)
         if (res.errors?.length) res.errors.forEach(e => addLog(e, 'error'))
+        if (autoFetch) {
+          res.repos
+            .filter((r: GitRepo) => r.status !== 'not_cloned')
+            .forEach((r: GitRepo) => projectsApi.fetch(r.account_id, r.name))
+        }
       }
     } catch (e) {
       addLog(`Failed to load repos: ${e}`, 'error')
@@ -97,7 +102,7 @@ export default function ProjectsTab() {
     }
   }
 
-  useEffect(() => { loadRepos() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadRepos(true) }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleAction(repo: GitRepo, action: 'clone' | 'pull' | 'fetch') {
     if (action === 'clone') projectsApi.clone(repo.account_id, repo.name, repo.clone_url)
@@ -250,7 +255,7 @@ export default function ProjectsTab() {
             </button>
           ))}
           <button className="btn-ghost text-xs py-1 px-2.5 ml-auto"
-            onClick={loadRepos} disabled={loading}>
+            onClick={() => loadRepos()} disabled={loading}>
             {loading ? 'Loading…' : '↺ Refresh'}
           </button>
         </div>

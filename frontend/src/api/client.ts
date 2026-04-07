@@ -1,5 +1,16 @@
 import type { Account, GitRepo, RepoStatus, FileEntry } from '../types'
 
+export interface GitCommit {
+  hash: string
+  short: string
+  parents: string[]
+  refs: string[]      // e.g. ["HEAD -> main", "origin/main"]
+  subject: string
+  author: string
+  date: string        // relative, e.g. "2 hours ago"
+  iso_date: string
+}
+
 const BASE = '/api'
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -93,6 +104,8 @@ export const projects = {
     req<{ ok: boolean; content: string }>('GET', `/projects/repos/${accountId}/${name}/file?path=${encodeURIComponent(path)}`),
   writeFile: (accountId: string, name: string, path: string, content: string) =>
     req<{ ok: boolean }>('PUT', `/projects/repos/${accountId}/${name}/file?path=${encodeURIComponent(path)}`, { content }),
+  log: (accountId: string, name: string, limit = 150) =>
+    req<{ ok: boolean; commits: GitCommit[] }>('GET', `/projects/repos/${accountId}/${name}/log?limit=${limit}`),
 }
 
 // ── Serial ───────────────────────────────────────────────────────────────────

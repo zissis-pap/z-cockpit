@@ -196,7 +196,14 @@ function RemoteAgentsSection() {
   async function load() {
     try { const r = await remotesApi.list(); setList(r.remotes) } catch {}
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load().then(() => {
+      // Auto-test all agents on mount so dots reflect real status
+      remotesApi.list().then(r => {
+        r.remotes.forEach(agent => test(agent.id))
+      }).catch(() => {})
+    })
+  }, [])
 
   function openAdd() { setForm(EMPTY_REMOTE); setEditId('new'); setErr('') }
   function openEdit(r: RemoteAgent) {
@@ -279,7 +286,12 @@ function RemoteAgentsSection() {
         <div key={agent.id} className="panel">
           <div className="p-4">
             <div className="flex items-center gap-3">
-              <div className="w-2 h-2 rounded-full bg-zinc-600 shrink-0" />
+              <div className={`w-2 h-2 rounded-full shrink-0 ${
+                testing === agent.id ? 'bg-amber-500 animate-pulse' :
+                testRes[agent.id]?.ok === true  ? 'bg-green-500' :
+                testRes[agent.id]?.ok === false ? 'bg-red-500' :
+                'bg-zinc-600'
+              }`} />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-zinc-200">{agent.name}</div>
                 <div className="text-xs text-zinc-500 mono">

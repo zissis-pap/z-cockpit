@@ -130,6 +130,44 @@ async def delete_local(account_id: str, repo_name: str):
         return {"ok": False, "error": str(e)}
 
 
+# ── Git log ───────────────────────────────────────────────────────────────────
+
+@router.get("/repos/{account_id}/{repo_name}/log")
+async def git_log(account_id: str, repo_name: str, limit: int = 150):
+    root = _repo_root(account_id, repo_name)
+    if not root or not root.exists():
+        return {"ok": False, "error": "Repository not found"}
+    SEP = "\x1f"
+    fmt = SEP.join(["%H", "%h", "%P", "%D", "%s", "%an", "%ar", "%ai"])
+    proc = await asyncio.create_subprocess_exec(
+        "git", "log", f"--pretty=format:{fmt}", f"-n{limit}", "--all",
+        cwd=str(root),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        return {"ok": False, "error": stderr.decode(errors="replace")}
+    commits = []
+    for line in stdout.decode(errors="replace").splitlines():
+        parts = line.split(SEP)
+        if len(parts) < 8:
+            continue
+        full_hash, short_hash, parents, refs, subject, author, rel_date, iso_date = parts
+        ref_list = [r.strip() for r in refs.split(",") if r.strip()]
+        commits.append({
+            "hash": full_hash,
+            "short": short_hash,
+            "parents": parents.split() if parents else [],
+            "refs": ref_list,
+            "subject": subject,
+            "author": author,
+            "date": rel_date,
+            "iso_date": iso_date,
+        })
+    return {"ok": True, "commits": commits}
+
+
 # ── File browser ───────────────────────────────────────────────────────────────
 
 def _repo_root(account_id: str, repo_name: str) -> Path | None:

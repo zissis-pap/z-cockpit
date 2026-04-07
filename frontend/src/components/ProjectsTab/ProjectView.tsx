@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { GitRepo, FileEntry, RepoStatus } from '../../types'
 import { projects as projectsApi } from '../../api/client'
+import type { GitCommit } from '../../api/client'
 
 interface Props {
   repo: GitRepo
@@ -229,9 +230,110 @@ function Editor({ accountId, repoName, file }: EditorProps) {
   )
 }
 
+// ── Git Log ────────────────────────────────────────────────────────────────────
+
+const LANE_COLORS = [
+  'bg-blue-500', 'bg-purple-500', 'bg-green-500', 'bg-amber-500',
+  'bg-pink-500', 'bg-cyan-500', 'bg-orange-500', 'bg-teal-500',
+]
+
+function refBadge(ref: string) {
+  const isHead     = ref.startsWith('HEAD ->')
+  const isRemote   = ref.startsWith('origin/') || ref.includes('/') && !ref.startsWith('HEAD')
+  const isTag      = ref.startsWith('tag:')
+  const label      = ref.replace(/^HEAD -> /, '').replace(/^tag: /, '')
+  const cls =
+    isHead   ? 'bg-blue-600/30 border-blue-500/50 text-blue-300' :
+    isTag    ? 'bg-amber-600/30 border-amber-500/50 text-amber-300' :
+    isRemote ? 'bg-zinc-700/60 border-zinc-600/50 text-zinc-400' :
+               'bg-green-700/30 border-green-600/50 text-green-300'
+  return (
+    <span key={ref} className={`inline-block border rounded px-1 py-px text-[10px] font-mono leading-none ${cls}`}>
+      {label}
+    </span>
+  )
+}
+
+function GitLog({ accountId, repoName }: { accountId: string; repoName: string }) {
+  const [commits, setCommits] = useState<GitCommit[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError]     = useState('')
+
+  useEffect(() => {
+    setLoading(true); setError('')
+    projectsApi.log(accountId, repoName).then(res => {
+      if (res.ok) setCommits(res.commits)
+      else setError('Failed to load log')
+    }).catch(e => setError(String(e))).finally(() => setLoading(false))
+  }, [accountId, repoName])
+
+  // Assign each unique branch tip a lane index for the colored dot
+  const laneMap = useRef(new Map<string, number>())
+  function laneFor(hash: string) {
+    if (!laneMap.current.has(hash)) {
+      laneMap.current.set(hash, laneMap.current.size % LANE_COLORS.length)
+    }
+    return laneMap.current.get(hash)!
+  }
+  // seed lanes from refs
+  commits.forEach(c => {
+    if (c.refs.some(r => r.startsWith('HEAD ->'))) laneFor(c.hash)
+  })
+
+  if (loading) return <div className="p-6 text-xs text-zinc-600 italic">Loading…</div>
+  if (error)   return <div className="p-6 text-xs text-red-400">{error}</div>
+  if (!commits.length) return <div className="p-6 text-xs text-zinc-600 italic">No commits found.</div>
+
+  return (
+    <div className="h-full overflow-y-auto">
+      {commits.map((c, i) => {
+        const lane = laneFor(c.hash)
+        const dotColor = LANE_COLORS[lane]
+        const isMerge = c.parents.length > 1
+        return (
+          <div
+            key={c.hash}
+            className="flex items-start gap-3 px-4 py-2 hover:bg-[#161b22] border-b border-[#21262d]/50 group"
+          >
+            {/* Graph lane dot */}
+            <div className="flex flex-col items-center shrink-0 mt-1.5">
+              <div className={`w-2.5 h-2.5 rounded-full ${dotColor} ${isMerge ? 'ring-1 ring-white/20' : ''}`} />
+              {i < commits.length - 1 && <div className="w-px flex-1 min-h-[20px] bg-[#30363d] mt-0.5" />}
+            </div>
+
+            {/* Commit info */}
+            <div className="flex-1 min-w-0 pb-1">
+              {/* Refs row */}
+              {c.refs.length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-1">
+                  {c.refs.map(r => refBadge(r))}
+                </div>
+              )}
+              {/* Subject */}
+              <div className="text-sm text-zinc-200 truncate leading-snug">{c.subject}</div>
+              {/* Meta */}
+              <div className="flex items-center gap-2 mt-0.5 text-[11px] text-zinc-600">
+                <span className="text-zinc-500">{c.author}</span>
+                <span>·</span>
+                <span title={c.iso_date}>{c.date}</span>
+              </div>
+            </div>
+
+            {/* Short hash */}
+            <span className="shrink-0 mono text-[11px] text-zinc-600 group-hover:text-zinc-400 mt-1.5 transition-colors">
+              {c.short}
+            </span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Project View ───────────────────────────────────────────────────────────────
 
 export default function ProjectView({ repo, onBack }: Props) {
+  const [rightTab, setRightTab] = useState<'files' | 'log'>('files')
   const [selectedFile, setSelectedFile] = useState<FileEntry | null>(null)
   const [showCommit, setShowCommit] = useState(false)
   const [commitMsg, setCommitMsg] = useState('')
@@ -342,37 +444,54 @@ export default function ProjectView({ repo, onBack }: Props) {
         </div>
       )}
 
-      {/* Body: file tree + editor */}
+      {/* Body: file tree + editor / git log */}
       <div className="flex-1 flex overflow-hidden min-h-0">
-        {/* File tree */}
+        {/* File tree (always visible) */}
         <div className="w-64 shrink-0 border-r border-[#21262d] overflow-hidden flex flex-col">
-          <div className="text-[10px] text-zinc-600 uppercase tracking-wider px-3 py-1.5 border-b border-[#21262d] shrink-0">
-            Files
+          {/* Tab bar */}
+          <div className="flex border-b border-[#21262d] shrink-0">
+            <button
+              onClick={() => setRightTab('files')}
+              className={`flex-1 text-[11px] py-1.5 font-medium transition-colors ${rightTab === 'files' ? 'text-zinc-200 border-b-2 border-blue-500' : 'text-zinc-600 hover:text-zinc-400'}`}
+            >Files</button>
+            <button
+              onClick={() => setRightTab('log')}
+              className={`flex-1 text-[11px] py-1.5 font-medium transition-colors ${rightTab === 'log' ? 'text-zinc-200 border-b-2 border-blue-500' : 'text-zinc-600 hover:text-zinc-400'}`}
+            >Git Log</button>
           </div>
+
           {repo.status === 'not_cloned' ? (
             <div className="p-4 text-xs text-zinc-600 italic">Repository not cloned.</div>
-          ) : (
+          ) : rightTab === 'files' ? (
             <FileTree
               accountId={repo.account_id}
               repoName={repo.name}
               selectedPath={selectedFile?.path ?? ''}
               onSelect={setSelectedFile}
             />
+          ) : (
+            <GitLog accountId={repo.account_id} repoName={repo.name} />
           )}
         </div>
 
-        {/* Editor */}
+        {/* Editor (only meaningful when Files tab is active) */}
         <div className="flex-1 overflow-hidden">
-          {selectedFile ? (
-            <Editor
-              key={selectedFile.path}
-              accountId={repo.account_id}
-              repoName={repo.name}
-              file={selectedFile}
-            />
+          {rightTab === 'files' ? (
+            selectedFile ? (
+              <Editor
+                key={selectedFile.path}
+                accountId={repo.account_id}
+                repoName={repo.name}
+                file={selectedFile}
+              />
+            ) : (
+              <div className="h-full flex items-center justify-center text-zinc-700 text-sm italic select-none">
+                Select a file to edit
+              </div>
+            )
           ) : (
             <div className="h-full flex items-center justify-center text-zinc-700 text-sm italic select-none">
-              Select a file to edit
+              Select a file to view its history
             </div>
           )}
         </div>

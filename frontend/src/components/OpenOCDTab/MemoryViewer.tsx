@@ -45,10 +45,31 @@ function flattenRows(rows: MemoryRow[]): { baseAddr: number; data: Uint8Array } 
   return { baseAddr, data: new Uint8Array(allBytes) }
 }
 
+// Parse 'flash info 0' output → {base, total} — port of _parse_flash_bank from reference
+function parseFlashBank(info: string): { base: number; total: number } | null {
+  const baseMatch = info.match(/at\s+0x([0-9a-f]+)/i)
+  const base = baseMatch ? parseInt(baseMatch[1], 16) : null
+  if (base === null) return null
+
+  let total = 0
+  for (const line of info.split('\n')) {
+    const m = line.match(/^\s*#\s*\d+:\s*0x[0-9a-f]+\s+\(0x([0-9a-f]+)/i)
+    if (m) total += parseInt(m[1], 16)
+  }
+  if (total === 0) {
+    // fallback: try 'size 0x...' field in the bank header line
+    const sizeMatch = info.match(/size\s+0x([0-9a-f]+)/i)
+    total = sizeMatch ? parseInt(sizeMatch[1], 16) : 128 * 1024
+  }
+  return { base, total }
+}
+
 export default function MemoryViewer({ connected, rows, onRows, onLog, firmwareData, firmwareBaseAddr, ocd }: Props) {
   const [address, setAddress] = useState('0x08000000')
   const [size, setSize]       = useState(256)
-  const [busy, setBusy]       = useState(false)
+  const [busy, setBusy]           = useState(false)
+  const [fullReading, setFullReading] = useState(false)
+  const [readProgress, setReadProgress] = useState(0)
   const [autoRefresh, setAutoRefresh]   = useState(false)
   const [intervalMs, setIntervalMs]     = useState(2000)
   const [timerRef, setTimerRef]         = useState<ReturnType<typeof setInterval> | null>(null)
@@ -88,19 +109,38 @@ export default function MemoryViewer({ connected, rows, onRows, onLog, firmwareD
   const doRead = useCallback(async (addrOverride?: string, sizeOverride?: number) => {
     if (!connected) { onLog('Not connected', 'error'); return }
     setBusy(true)
+    setReadProgress(0)
     const readAddr = addrOverride ?? address
     const readSize = sizeOverride ?? size
+
     try {
-      const res = await ocd.memory.read(readAddr, readSize)
-      if (res.ok) {
-        onRows(res.rows)
+      const addrInt = parseInt(readAddr, readAddr.toLowerCase().startsWith('0x') ? 16 : 10)
+      // Target ~20 progress steps; minimum chunk 256 B, maximum 16 KB
+      const chunkSize = Math.max(256, Math.min(16384, Math.ceil(readSize / 20)))
+      const numChunks = Math.ceil(readSize / chunkSize)
+      const allRows: MemoryRow[] = []
+
+      for (let i = 0; i < numChunks; i++) {
+        const chunkAddr = addrInt + i * chunkSize
+        const thisChunk = Math.min(chunkSize, readSize - i * chunkSize)
+        const chunkHex  = `0x${chunkAddr.toString(16).padStart(8, '0').toUpperCase()}`
+        const res = await ocd.memory.read(chunkHex, thisChunk)
+        if (res.ok) {
+          allRows.push(...res.rows)
+        } else {
+          onLog('Memory read failed', 'error')
+          break
+        }
+        setReadProgress(Math.round(((i + 1) / numChunks) * 100))
+      }
+
+      if (allRows.length > 0) {
+        onRows(allRows)
         setModifications(new Map())
         setCursor(null)
         setEditBuf('')
         setScrollTop(0)
         if (tableContainerRef.current) tableContainerRef.current.scrollTop = 0
-      } else {
-        onLog('Memory read failed', 'error')
       }
     } catch (e) {
       onLog(`Memory read error: ${e}`, 'error')
@@ -108,6 +148,26 @@ export default function MemoryViewer({ connected, rows, onRows, onLog, firmwareD
       setBusy(false)
     }
   }, [connected, address, size, onLog, onRows])
+
+  const doReadFull = useCallback(async () => {
+    if (!connected) { onLog('Not connected', 'error'); return }
+    setFullReading(true)
+    try {
+      const infoRes = await ocd.flash.info() as { ok: boolean; result: string }
+      if (!infoRes.ok) { onLog('Flash info failed', 'error'); return }
+      const bank = parseFlashBank(infoRes.result)
+      if (!bank) { onLog('Could not parse flash bank info', 'error'); return }
+      const addrHex = `0x${bank.base.toString(16).padStart(8, '0').toUpperCase()}`
+      onLog(`Full flash read: ${addrHex}, ${bank.total} bytes (${(bank.total / 1024).toFixed(0)} KB)`, 'info')
+      setAddress(addrHex)
+      setSize(bank.total)
+      await doRead(addrHex, bank.total)
+    } catch (e) {
+      onLog(`Full flash read error: ${e}`, 'error')
+    } finally {
+      setFullReading(false)
+    }
+  }, [connected, onLog, ocd, doRead])
 
   async function doVerify() {
     if (firmwareData) {
@@ -261,11 +321,15 @@ export default function MemoryViewer({ connected, rows, onRows, onLog, firmwareD
             </div>
           </div>
           <div className="flex gap-2 items-center flex-wrap">
-            <button className="btn-primary" onClick={() => doRead()} disabled={busy || !connected}>
+            <button className="btn-primary" onClick={() => doRead()} disabled={busy || fullReading || !connected}>
               {busy ? 'Reading…' : 'Read'}
             </button>
+            <button className="btn-ghost" onClick={doReadFull} disabled={busy || fullReading || !connected}
+              title="Read entire flash bank (queries flash info for base address and size)">
+              {fullReading ? 'Reading…' : '⬇ Full Flash'}
+            </button>
             <button className={`btn-ghost ${autoRefresh ? 'border-amber-500 text-amber-400' : ''}`}
-              onClick={toggleAutoRefresh} disabled={!connected}>
+              onClick={toggleAutoRefresh} disabled={!connected || fullReading}>
               {autoRefresh ? '⏹ Stop' : '↺ Auto'}
             </button>
             {autoRefresh && (
@@ -292,6 +356,17 @@ export default function MemoryViewer({ connected, rows, onRows, onLog, firmwareD
               </button>
             )}
           </div>
+          {(busy || fullReading) && (
+            <div className="flex items-center gap-2 mt-1">
+              <div className="flex-1 bg-[#21262d] rounded-full h-1.5">
+                <div
+                  className="bg-blue-500 h-1.5 rounded-full transition-all duration-200"
+                  style={{ width: `${readProgress}%` }}
+                />
+              </div>
+              <span className="text-xs mono text-zinc-400 w-9 text-right shrink-0">{readProgress}%</span>
+            </div>
+          )}
         </div>
       </div>
 

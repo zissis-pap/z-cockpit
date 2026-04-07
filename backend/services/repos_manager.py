@@ -56,6 +56,9 @@ class ReposManager:
 
     async def _stream_proc(self, args: list[str], cwd: Path, repo_key: str) -> bool:
         """Run a subprocess, stream output as log messages, return success."""
+        if not cwd.exists():
+            await self._log(repo_key, f"Directory not found: {cwd} — clone the repo first", 'error')
+            return False
         try:
             proc = await asyncio.create_subprocess_exec(
                 *args,
@@ -157,6 +160,10 @@ class ReposManager:
         except ValueError:
             return
         await self.broadcast({'type': 'op_start', 'op': 'pull', 'repo': repo_key})
+        if not (repo_path / '.git').exists():
+            await self._log(repo_key, f"Not cloned locally — use Clone first ({repo_path})", 'error')
+            await self.broadcast({'type': 'op_done', 'op': 'pull', 'repo': repo_key, 'ok': False})
+            return
         ok = await self._stream_proc(['git', 'pull'], cwd=repo_path, repo_key=repo_key)
         await self.broadcast({'type': 'op_done', 'op': 'pull', 'repo': repo_key, 'ok': ok})
 
@@ -166,6 +173,10 @@ class ReposManager:
         except ValueError:
             return
         await self.broadcast({'type': 'op_start', 'op': 'fetch', 'repo': repo_key})
+        if not (repo_path / '.git').exists():
+            await self._log(repo_key, f"Not cloned locally — use Clone first ({repo_path})", 'error')
+            await self.broadcast({'type': 'op_done', 'op': 'fetch', 'repo': repo_key, 'ok': False})
+            return
         ok = await self._stream_proc(['git', 'fetch'], cwd=repo_path, repo_key=repo_key)
         await self.broadcast({'type': 'op_done', 'op': 'fetch', 'repo': repo_key, 'ok': ok})
 
@@ -183,8 +194,15 @@ class ReposManager:
             await self.broadcast({'type': 'op_done', 'op': 'commit', 'repo': repo_key, 'ok': False})
             return
 
-        # Commit (allow "nothing to commit" — exit 1 but not a fatal error)
-        await self._stream_proc(['git', 'commit', '-m', message], cwd=repo_path, repo_key=repo_key)
+        # Commit — inject identity via -c so no global git config is required in the container
+        username = account.get('username', 'z-cockpit')
+        platform = account.get('platform', 'github')
+        noreply = 'bitbucket.org' if platform == 'bitbucket' else 'github.com'
+        email = f"{username}@users.noreply.{noreply}"
+        await self._stream_proc(
+            ['git', '-c', f'user.name={username}', '-c', f'user.email={email}', 'commit', '-m', message],
+            cwd=repo_path, repo_key=repo_key,
+        )
 
         # Push with credentials — use remote name so tracking refs are updated
         rc, remote_url, _ = await self._run(['git', 'remote', 'get-url', 'origin'], cwd=repo_path)
@@ -195,7 +213,6 @@ class ReposManager:
 
         # Strip any existing embedded credentials before re-injecting
         clean_url = re.sub(r'https://[^@]+@', 'https://', remote_url.strip())
-        platform = account.get('platform', 'github')
         if platform == 'bitbucket':
             auth_url = bitbucket_manager.make_auth_clone_url(clean_url, account['username'], account['token'])
         else:
@@ -203,7 +220,7 @@ class ReposManager:
 
         # Temporarily set remote to auth URL, push via remote name (updates tracking refs), restore clean URL
         await self._run(['git', 'remote', 'set-url', 'origin', auth_url], cwd=repo_path)
-        ok = await self._stream_proc(['git', 'push', 'origin', 'HEAD'], cwd=repo_path, repo_key=repo_key)
+        ok = await self._stream_proc(['git', 'push', '--set-upstream', 'origin', 'HEAD'], cwd=repo_path, repo_key=repo_key)
         await self._run(['git', 'remote', 'set-url', 'origin', clean_url], cwd=repo_path)
         await self.broadcast({'type': 'op_done', 'op': 'commit', 'repo': repo_key, 'ok': ok})
 

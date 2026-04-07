@@ -17,6 +17,7 @@ FROM python:3.11-slim
 #   nmap     – network scanner (network_tools.py falls back to ping/arp without it)
 #   iputils-ping, net-tools – fallback ping sweep + arp
 RUN apt-get update && apt-get install -y --no-install-recommends \
+        git \
         openocd \
         nmap \
         iputils-ping \
